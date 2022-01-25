@@ -2,8 +2,8 @@
 // Created by Alex on 21.04.2021.
 //
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+//#include <gmock/gmock.h>
+//#include <gtest/gtest.h>
 
 #include <fstream>
 #include <vector>
@@ -18,6 +18,7 @@
 #include <ikarus/Grids/GridData.h>
 #include <ikarus/Grids/SimpleGrid/SimpleGrid.h>
 #include <ikarus/Variables/VariableVector.h>
+#include <catch2/catch_test_macros.hpp>
 
 class TestFE {
 public:
@@ -32,7 +33,7 @@ public:
   }
 };
 
-TEST(GridDataInterfaceTest, createDataOnEntities) {
+TEST_CASE("GridDataInterfaceTest: createDataOnEntities", "[1]") {
   using namespace Ikarus;
   using namespace Ikarus::Grid;
   using namespace Ikarus::FiniteElements;
@@ -78,19 +79,19 @@ TEST(GridDataInterfaceTest, createDataOnEntities) {
   for (auto& vertex : vertices(gridView)) {
     auto& vertexData = gridData.getData(vertex);
     for (int i = 0; auto& vertexVar : vertexData)
-      EXPECT_THAT(getTag(vertexVar), static_cast<int>(expectedVarTags[i++]));
+      CHECK(getTag(vertexVar)== static_cast<int>(expectedVarTags[i++]));
   }
 
   for (auto& surface : surfaces(gridView)) {
     auto& surfaceData = gridData.getData(surface);
     for (auto& surfaceVar : surfaceData)
-      EXPECT_THAT(getTag(surfaceVar), static_cast<int>(VariableTags::pressure));
+      CHECK (getTag(surfaceVar)== static_cast<int>(VariableTags::pressure));
   }
 
   for (auto& edge : edges(gridView)) {
     auto& edgeData = gridData.getData(edge);
     for (auto& edgeVar : edgeData)
-      EXPECT_THAT(getTag(edgeVar), static_cast<int>(VariableTags::edgeLength));
+      CHECK (getTag(edgeVar)== static_cast<int>(VariableTags::edgeLength));
   }
 
   gridData.remove(data(VariableTags::velocity2d), EntityType::vertex);
@@ -98,11 +99,11 @@ TEST(GridDataInterfaceTest, createDataOnEntities) {
   for (auto& vertex : vertices(gridView)) {
     auto& vertexData = gridData.getData(vertex);
     for (auto& vertexVar : vertexData)
-      EXPECT_THAT(getTag(vertexVar), static_cast<int>(VariableTags::displacement2d));
+      CHECK (getTag(vertexVar)== static_cast<int>(VariableTags::displacement2d));
   }
 }
 
-TEST(GridDataInterfaceTest, SimpleIndexSetTest) {
+TEST_CASE("GridDataInterfaceTest: SimpleIndexSetTest", "[1]") {
   {
     using namespace Ikarus::Grid;
     using Grid = SimpleGrid<2, 2>;
@@ -136,14 +137,14 @@ TEST(GridDataInterfaceTest, SimpleIndexSetTest) {
 
     auto indexSet = gridView.indexSet();
 
-    std::array<std::vector<int>, 3> expectedVertexIndices{{{0, 1, 2, 3}, {1, 4, 3, 5}, {4, 6, 5}}};
-    std::array<std::vector<int>, 3> expectedEdgeIndices{{{0, 1, 2, 3}, {2, 4, 5, 6}, {7, 5, 8}}};
+    std::array<std::vector<size_t>, 3> expectedVertexIndices{{{0, 1, 2, 3}, {1, 4, 3, 5}, {4, 6, 5}}};
+    std::array<std::vector<size_t>, 3> expectedEdgeIndices{{{0, 1, 2, 3}, {2, 4, 5, 6}, {7, 5, 8}}};
     for (int surfIndex = 0; auto&& surf : surfaces(gridView)) {
       for (size_t i = 0; i < surf.subEntities(2); ++i)
-        EXPECT_THAT(expectedVertexIndices[surfIndex][i], indexSet.subIndex(surf, i, 2));
+        CHECK (expectedVertexIndices[surfIndex][i]== indexSet.subIndex(surf, i, 2));
       for (size_t i = 0; i < surf.subEntities(1); ++i)
-        EXPECT_THAT(expectedEdgeIndices[surfIndex][i], indexSet.subIndex(surf, i, 1));
-      EXPECT_THROW([[maybe_unused]] auto i = surf.subEntities(0), std::logic_error);
+        CHECK (expectedEdgeIndices[surfIndex][i]== indexSet.subIndex(surf, i, 1));
+      CHECK_THROWS_AS (surf.subEntities(0), std::logic_error);
       ++surfIndex;
     }
   }
@@ -182,18 +183,18 @@ TEST(GridDataInterfaceTest, SimpleIndexSetTest) {
 
     auto indexSet = gridView.indexSet();
 
-    std::array<std::vector<int>, 2> expectedVertexIndices{{{0, 1, 2, 3, 4, 5, 6, 7}, {1, 8, 3, 5}}};
-    std::array<std::vector<int>, 2> expectedEdgeIndices{
+    std::array<std::vector<size_t>, 2> expectedVertexIndices{{{0, 1, 2, 3, 4, 5, 6, 7}, {1, 8, 3, 5}}};
+    std::array<std::vector<size_t>, 2> expectedEdgeIndices{
         {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {12, 5, 13, 1, 14, 15}}};
-    std::array<std::vector<int>, 2> expectedSurfaceIndices{{{0, 1, 2, 3, 4, 5}, {6, 7, 8, 9}}};
+    std::array<std::vector<size_t>, 2> expectedSurfaceIndices{{{0, 1, 2, 3, 4, 5}, {6, 7, 8, 9}}};
     for (int eleIndex = 0; auto&& ele : rootEntities(gridView)) {
       for (size_t i = 0; i < ele.subEntities(3); ++i)
-        EXPECT_THAT(expectedVertexIndices[eleIndex][i], indexSet.subIndex(ele, i, 3));
+        CHECK (expectedVertexIndices[eleIndex][i]== indexSet.subIndex(ele, i, 3));
       for (size_t i = 0; i < ele.subEntities(2); ++i)
-        EXPECT_THAT(expectedEdgeIndices[eleIndex][i], indexSet.subIndex(ele, i, 2));
+        CHECK (expectedEdgeIndices[eleIndex][i]== indexSet.subIndex(ele, i, 2));
       for (size_t i = 0; i < ele.subEntities(1); ++i)
-        EXPECT_THAT(expectedSurfaceIndices[eleIndex][i], indexSet.subIndex(ele, i, 1));
-      EXPECT_THROW([[maybe_unused]] auto i = ele.subEntities(0), std::logic_error);
+        CHECK (expectedSurfaceIndices[eleIndex][i]== indexSet.subIndex(ele, i, 1));
+      CHECK_THROWS_AS ( ele.subEntities(0), std::logic_error);
       ++eleIndex;
     }
 
@@ -224,10 +225,10 @@ TEST(GridDataInterfaceTest, SimpleIndexSetTest) {
     for (int eleIndex = 0; auto&& ele : rootEntities(gridView)) {
       for (auto&& surface : surfaces(ele)) {
         auto surfaceSubData = gridData.getAllSubEntityData(surface);
-        EXPECT_THAT(gridData.getData(surface)[0], VariableFactory::createVariable(VariableTags::pressure));
-        EXPECT_THAT(1, gridData.getData(surface).size());
+        CHECK (gridData.getData(surface)[0]== VariableFactory::createVariable(VariableTags::pressure));
+        CHECK (1== gridData.getData(surface).size());
         for (int varIndex = 0; auto surfaceSubVars : surfaceSubData.get(EntityType::surface))
-          EXPECT_THAT(surfaceSubVars, VariableFactory::createVariable(surfaceExpectedSubVars[eleIndex][varIndex++]));
+          CHECK (surfaceSubVars == VariableFactory::createVariable(surfaceExpectedSubVars[eleIndex][varIndex++]));
       }
       ++eleIndex;
     }
@@ -241,7 +242,7 @@ TEST(GridDataInterfaceTest, SimpleIndexSetTest) {
     for (int eleIndex = 0, surfIndex = 0;
          auto&& [fe, eledof, eleVars, eleData] : dh.elementIndicesVariableDataTuple()) {
       for (int varIndex = 0; auto&& eleSubData : eleData.get(EntityType::surface))
-        EXPECT_THAT(eleSubData, VariableFactory::createVariable(surfaceExpectedSubVars[eleIndex][varIndex++]));
+        CHECK (eleSubData == VariableFactory::createVariable(surfaceExpectedSubVars[eleIndex][varIndex++]));
       if (surfIndex == 5) ++eleIndex;
       ++surfIndex;
     }

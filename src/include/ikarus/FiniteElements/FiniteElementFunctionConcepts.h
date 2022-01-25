@@ -6,6 +6,7 @@
 
 //#include <ikarus/FiniteElements/InterfaceFiniteElement.h>
 #include <optional>
+#include <map>
 
 #include <ikarus/FiniteElements/FEValues.h>
 #include <ikarus/Variables/InterfaceVariable.h>

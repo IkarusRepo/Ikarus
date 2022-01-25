@@ -29,6 +29,11 @@ add_library(Ikarus::Ikarus ALIAS Ikarus)
 
 include(GNUInstallDirs)
 install(TARGETS Ikarus EXPORT IkarusTargets)
+
+target_compile_options(
+        Ikarus PUBLIC -Wall -Wpedantic -Wextra -Werror
+        -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable
+)
 # install_targets(Ikarus) install(DIRECTORY include/ikarus DESTINATION include COMPONENT Devel )
 
 # configure_and_install(${CMAKE_SCRIPTS_ROOT}/simple-config.cmake.in Ikarus SameMajorVersion)

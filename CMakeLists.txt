@@ -14,7 +14,7 @@ if(PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
   )
 endif()
 
-add_definitions(-Wall -Wpedantic -Wextra -Werror -m64)
+add_definitions(-Wall -Wpedantic -Wextra -Werror -m64 -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable)
 
 add_subdirectory(src)
 add_subdirectory(examples)

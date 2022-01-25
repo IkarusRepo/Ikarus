@@ -2,8 +2,8 @@
 // Created by Alex on 21.04.2021.
 //
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+//#include <gmock/gmock.h>
+//#include <gtest/gtest.h>
 
 #include "testHelpers.h"
 
@@ -15,10 +15,13 @@
 
 #include "ikarus/AnsatzFunctions/Lagrange.h"
 #include "ikarus/Geometries/GeometryWithExternalInput.h"
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
+
 
 const double tol = 1e-15;
 
-TEST(GeometryTest, CreateJacobianDeterminantAndJacobian2DFlat) {
+TEST_CASE("GeometryTest: CreateJacobianDeterminantAndJacobian2DFlat", "[1]") {
   using namespace Ikarus::Geometry;
   const Eigen::Matrix<double, 2, 1> xieta({0.0, 0.0});
 
@@ -33,23 +36,23 @@ TEST(GeometryTest, CreateJacobianDeterminantAndJacobian2DFlat) {
 
   Eigen::Matrix2d JTexpected;
   JTexpected << 4, 0, 0, 4;
-  EXPECT_EQ(JTexpected, JT);
+  CHECK (JT == JTexpected);
 
   Eigen::Matrix2d JTinv = ExternalPlaneGeometry<double>::jacobianInverseTransposed(dN, x);
 
   Eigen::Matrix2d JTinvexpected;
   JTinvexpected << 0.25, 0.0, 0.0, 0.25;
 
-  EXPECT_EQ(JTinvexpected, JTinv);
+  CHECK (JTinv == JTinvexpected);
 
   const double detJ = ExternalPlaneGeometry<double>::determinantJacobian(dN, x);
 
-  EXPECT_EQ(16.0, detJ);
+  CHECK (detJ == 16.0);
 }
 
 #include <ikarus/Geometries/GeometricElementDefinitions.h>
 
-TEST(GeometryTest, WithInteralAnsatzandVertices) {
+TEST_CASE("GeometryTest: WithInteralAnsatzandVertices", "[1]") {
   using namespace Ikarus::Geometry;
 
   const Eigen::Matrix<double, 3, 1> xieta({0.0, 0.0, 0.0});
@@ -70,21 +73,21 @@ TEST(GeometryTest, WithInteralAnsatzandVertices) {
   Eigen::Matrix3d JTexpected;
   JTexpected << 4, 0, 0, 0, 4, 0, 0, 0, 1;
 
-  EXPECT_THAT(JT, EigenApproxEqual(JTexpected, tol));
+  REQUIRE_THAT  (JT , EigenApproxEqual(JTexpected, tol));
 
   Eigen::Matrix3d JTinv = geoEle.jacobianInverseTransposed(xieta);
 
   Eigen::Matrix3d JTinvexpected;
   JTinvexpected << 0.25, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 1.0;
 
-  EXPECT_THAT(JTinv, EigenApproxEqual(JTinvexpected, tol));
+  REQUIRE_THAT  (JTinv,  EigenApproxEqual(JTinvexpected, tol));
 
   double detJ = geoEle.determinantJacobian(xieta);
 
-  EXPECT_EQ(16.0, detJ);
+  CHECK (detJ == 16.0);
 }
 
-TEST(GeometryTest, WithInteralAnsatzandVerticesQuadratic) {
+TEST_CASE("GeometryTest: WithInteralAnsatzandVerticesQuadratic", "[1]") {
   using namespace Ikarus::Geometry;
 
   const Eigen::Matrix<double, 2, 1> xieta({
@@ -109,17 +112,16 @@ TEST(GeometryTest, WithInteralAnsatzandVerticesQuadratic) {
   Eigen::Matrix2d JTexpected;
   JTexpected << 6.336000000, 8.712000000, -2.06700000, 8.34725000;
 
-  EXPECT_THAT(JT, EigenApproxEqual(JTexpected, tol));
+  CHECK_THAT (JT, EigenApproxEqual(JTexpected, tol));
 
   Eigen::Matrix2d JTinv = geoEle.jacobianInverseTransposed(xieta);
 
   Eigen::Matrix2d JTinvexpected;
   JTinvexpected << 0.1177395639915888, -0.1228844327766296, 0.02915543188123201, 0.08937049656482153;
-  EXPECT_THAT(JTinv, EigenApproxEqual(JTinvexpected, tol));
+  CHECK_THAT (JTinv, EigenApproxEqual(JTinvexpected, tol));
 
   double detJ = geoEle.determinantJacobian(xieta);
-
-  EXPECT_DOUBLE_EQ(70.895880000000005, detJ);
+  CHECK (detJ == Catch::Approx(70.895880000000005));
 
   auto dNCart = geoEle.transformCurvLinearDerivativesToCartesian(xieta);
 
@@ -130,10 +132,10 @@ TEST(GeometryTest, WithInteralAnsatzandVerticesQuadratic) {
       0.46876684807592948154e-1, -.11362407795995210656, .18889292229356298362, 0.93572770084666440706e-1,
       .26796901006332354172, 0.20051307875285665863e-1, -0.61801626009211245234e-1;
 
-  EXPECT_THAT(dNCart, EigenApproxEqual(dNCartExpected, tol));
+  CHECK_THAT (dNCart, EigenApproxEqual(dNCartExpected, tol));
 }
 
-TEST(GeometryTest, CreateJacobianDeterminantAndJacobian2DSurfIn3D) {
+TEST_CASE("GeometryTest: CreateJacobianDeterminantAndJacobian2DSurfIn3D", "[1]") {
   const Eigen::Matrix<double, 2, 1> xieta({-1.0, -1.0});
   Eigen::Matrix<double, 4, 2> dN = Ikarus::LagrangeCube<double, 2, 1>::evaluateJacobian(xieta);
 
@@ -147,5 +149,5 @@ TEST(GeometryTest, CreateJacobianDeterminantAndJacobian2DSurfIn3D) {
   Eigen::Matrix<double, 2, 3> JTexpected;
   JTexpected << 4, 0, 0, 0, 4, 0;
 
-  ASSERT_EQ(JTexpected, JT);
+  REQUIRE (JT == JTexpected);
 }

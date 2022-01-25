@@ -1,13 +1,16 @@
 //
 // Created by Alex on 21.07.2021.
 //
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+//#include <gmock/gmock.h>
+//#include <gtest/gtest.h>
 
 #include "testHelpers.h"
 #define EIGEN_SPARSEMATRIX_PLUGIN "eigenSparseAddon.h"
 #include <Eigen/Core>
 #include <Eigen/Dense>
+
+#include <autodiff/forward/dual.hpp>
+#include <autodiff/forward/dual/eigen.hpp>
 
 #include "ikarus/Assembler/SimpleAssemblers.h"
 #include "ikarus/FEManager/DefaultFEManager.h"
@@ -17,7 +20,9 @@
 #include "ikarus/Solver/NonLinearSolver/NewtonRaphson.hpp"
 #include "ikarus/utils/Observer/nonLinearSolverLogger.h"
 #include <ikarus/LinearAlgebra/NonLinearOperator.h>
-
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
+using namespace Catch;
 template <typename SolutionType, typename SolutionTypeExpected, typename NewtonRhapson>
 void checkNewtonRhapson(NewtonRhapson& nr, SolutionType& x, double tolerance, int maxIter, int iterExpected,
                         const SolutionTypeExpected& xExpected) {
@@ -25,19 +30,19 @@ void checkNewtonRhapson(NewtonRhapson& nr, SolutionType& x, double tolerance, in
   const auto solverInfo = nr.solve(x);
 
   if constexpr (std::is_same_v<SolutionType, double>)
-    EXPECT_DOUBLE_EQ(x, xExpected);
+    CHECK((xExpected == Approx(x)));
   else
-    EXPECT_THAT(x, EigenApproxEqual(xExpected, 1e-15));
+    CHECK_THAT(x, EigenApproxEqual(xExpected, 1e-15));
 
-  EXPECT_EQ(solverInfo.sucess, true);
-  EXPECT_LE(solverInfo.residualnorm, tolerance);
-  EXPECT_EQ(solverInfo.iterations, iterExpected);
+  CHECK(true == solverInfo.sucess);
+  CHECK(tolerance >= solverInfo.residualnorm);
+  CHECK(iterExpected == solverInfo.iterations);
 }
 
 auto f(double& x) { return 0.5 * x * x + x - 2; }
 auto df(double& x) { return x + 1; }
 
-TEST(NonLinearOperator, SimpleOperatorNewtonRhapsonTest) {
+TEST_CASE("NonLinearOperator: SimpleOperatorNewtonRhapsonTest", "[1]") {
   double x = 13;
 
   auto fvLambda  = [&](auto&& x) { return f(x); };
@@ -59,7 +64,7 @@ Eigen::MatrixXd dfv([[maybe_unused]] Eigen::VectorXd& x, Eigen::MatrixXd& A, [[m
   return A;
 }
 
-TEST(NonLinearOperator, VectorValuedOperatorNewtonMethod) {
+TEST_CASE("NonLinearOperator: VectorValuedOperatorNewtonMethod", "[1]") {
   Eigen::VectorXd x(3);
   x << 1, 2, 3;
   Eigen::VectorXd b(3);
@@ -86,7 +91,7 @@ Eigen::MatrixXd ddf2v([[maybe_unused]] Eigen::VectorXd& x, Eigen::MatrixXd& A, [
   return 2 * A;
 }
 
-TEST(NonLinearOperator, SecondOrderVectorValuedOperator) {
+TEST_CASE("NonLinearOperator: SecondOrderVectorValuedOperator", "[1]") {
   Eigen::VectorXd x(3);
 
   x << 1, 2, 3;
@@ -106,11 +111,10 @@ TEST(NonLinearOperator, SecondOrderVectorValuedOperator) {
   Ikarus::NewtonRaphson nr(subOperator, Ikarus::ILinearSolver<double>(Ikarus::SolverTypeTag::LDLT));
   checkNewtonRhapson(nr, x, eps, maxIter, 1, (-0.5 * A.ldlt().solve(b)).eval());
   nonLinOp.update<0>();
-  EXPECT_DOUBLE_EQ(nonLinOp.value(), -2.6538461538461533);
+  CHECK (-2.6538461538461533 == Approx(nonLinOp.value()));
 }
 
-#include <autodiff/forward/dual.hpp>
-#include <autodiff/forward/dual/eigen.hpp>
+
 using namespace autodiff;
 template <typename ScalarType>
 ScalarType f2vNL(const Eigen::VectorX<ScalarType>& x, Eigen::MatrixXd&, Eigen::VectorXd&) {
@@ -125,7 +129,7 @@ Eigen::MatrixXd ddf2vNL(Eigen::VectorX<autodiff::dual2nd>& x, Eigen::MatrixXd& A
   return autodiff::hessian(f2vNL<autodiff::dual2nd>, wrt(x), at(x, A, b));
 }
 
-TEST(NonLinearOperator, SecondOrderVectorValuedOperatorNonlinearAutodiff) {
+TEST_CASE("NonLinearOperator: SecondOrderVectorValuedOperatorNonlinearAutodiff", "[1]") {
   Eigen::VectorXd x(3);
 
   x << 1, 2, 3;
@@ -133,7 +137,6 @@ TEST(NonLinearOperator, SecondOrderVectorValuedOperatorNonlinearAutodiff) {
   b << 5, 7, 8;
   Eigen::MatrixXd A(3, 3);
   A = Eigen::MatrixXd::Identity(3, 3) * 13;
-  std::cout << "T1" << std::endl;
   auto fvLambda  = [&](auto&& x) { return f2vNL<double>(x, A, b); };
   auto dfvLambda = [&](auto&& x) {
     auto xR = x.template cast<autodiff::dual>().eval();
@@ -143,29 +146,28 @@ TEST(NonLinearOperator, SecondOrderVectorValuedOperatorNonlinearAutodiff) {
     auto xR = x.template cast<autodiff::dual2nd>().eval();
     return ddf2vNL(xR, A, b);
   };
-  std::cout << "T2" << std::endl;
   auto nonLinOp = Ikarus::NonLinearOperator(linearAlgebraFunctions(fvLambda, dfvLambda, ddfvLambda), parameter(x));
-  std::cout << "T3" << std::endl;
+
   auto subOperator = nonLinOp.subOperator<1, 2>();
-  std::cout << "T4" << std::endl;
+
   // Newton method test find root of first derivative
   const double eps  = 1e-14;
   const int maxIter = 20;
   Ikarus::NewtonRaphson nr(subOperator, Ikarus::ILinearSolver<double>(Ikarus::SolverTypeTag::LDLT));
-  std::cout << "T5" << std::endl;
+
   const Eigen::Vector3d xSol(-4.9131804394348836888, 2.0287578381104342236, 2.0287578381104342236);
   auto nonLinearSolverObserver = std::make_shared<NonLinearSolverLogger>();
   nr.subscribeAll(nonLinearSolverObserver);
-  std::cout << "T6" << std::endl;
+
   checkNewtonRhapson(nr, x, eps, maxIter, 5, xSol);
-  std::cout << "T7" << std::endl;
+
   nonLinOp.update<0>();
-  EXPECT_DOUBLE_EQ(nonLinOp.value(), -1.1750584073929625716);
+  CHECK (-1.1750584073929625716 == Approx (nonLinOp.value()));
 }
 
 #include <ikarus/Grids/SimpleGrid/SimpleGrid.h>
 
-TEST(NonLinearOperator, GridLoadControlTest) {
+TEST_CASE("NonLinearOperator: GridLoadControlTest", "[1]") {
   using namespace Ikarus::Grid;
   using Grid = SimpleGrid<2, 2>;
   SimpleGridFactory<2, 2> gridFactory;
@@ -219,12 +221,12 @@ TEST(NonLinearOperator, GridLoadControlTest) {
 
   auto& K       = nonLinearOperator.derivative();
   auto& Ksparse = nonLinearOperatorWithSparseMatrix.derivative();
-  EXPECT_THAT(Ksparse, EigenApproxEqual(K, 1e-15));
+  CHECK_THAT (Eigen::MatrixXd(Ksparse), EigenApproxEqual(K, 1e-15));
 
   Eigen::ColPivHouseholderQR<Eigen::MatrixXd> decomp(K);
   auto rank = decomp.rank();
-  EXPECT_EQ(rank, K.cols() - 3);
-  EXPECT_EQ(rank, K.rows() - 3);
+  CHECK (K.cols() - 3 == rank);
+  CHECK (K.rows() - 3 == rank);
   for (int i = 1; i < K.cols(); ++i) {
     K.coeffRef(i, 0) = 0.0;
     K.coeffRef(i, 1) = 0.0;
@@ -238,8 +240,8 @@ TEST(NonLinearOperator, GridLoadControlTest) {
   K.coeffRef(3, 3) = 1;
   decomp.compute(K);
   rank = decomp.rank();
-  EXPECT_EQ(rank, K.cols());
-  EXPECT_EQ(rank, K.rows());
+  CHECK (K.cols() == rank);
+  CHECK (K.rows() == rank);
 
   auto f = nonLinearOperator.value();
   f.setZero();
@@ -248,7 +250,7 @@ TEST(NonLinearOperator, GridLoadControlTest) {
   const Eigen::VectorXd D = K.ldlt().solve(f);
   x += D;
 
-  EXPECT_EQ(x.size(), K.rows());
+  CHECK (K.rows() == x.size());
 
   const Eigen::VectorXd DExpected
       = (Eigen::VectorXd(D.size()) <<  // clang-format off
@@ -268,6 +270,6 @@ TEST(NonLinearOperator, GridLoadControlTest) {
      0.903738477407708,  -0.01220627723080757,    0.9039079699348371,  -0.04314837701125365,    0.9041544598306273,
   -0.07423566623294452,    0.9044693949758897).finished();  // clang-format on
 
-  EXPECT_THAT(D, EigenApproxEqual(DExpected, 1e-12));
+  CHECK_THAT (D, EigenApproxEqual(DExpected, 1e-12));
   //  drawDeformed(gridView, feManager);
 }

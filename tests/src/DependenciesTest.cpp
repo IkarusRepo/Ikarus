@@ -6,7 +6,7 @@
 #include <vector>
 //#include "Geometries/Geometries.h"
 
-#include <gtest/gtest.h>
+//#include <gtest/gtest.h>
 
 #include "spdlog/fmt/ostr.h"
 #include "spdlog/sinks/basic_file_sink.h"
@@ -14,13 +14,13 @@
 #include "spdlog/spdlog.h"
 
 #include <Eigen/Core>
-
+#include <catch2/catch_test_macros.hpp>
 void foo() {
   spdlog::info("Does this appear in the correct logger?");
   spdlog::debug("This is a debug statement");
 }
 
-TEST(Dependencies, spdlog) {
+TEST_CASE("Dependencies: spdlog", "[1]") {
   auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
   console_sink->set_level(spdlog::level::trace);
   console_sink->set_pattern("[%^%l%$] %v");
@@ -64,13 +64,13 @@ TEST(Dependencies, spdlog) {
 [info] Does this appear in the correct logger?
 [info] 1 2 3
 )xxx";
-  EXPECT_EQ(expectedOutput, file);
+  CHECK (file == expectedOutput);
 }
 
 #include <dune/common/parametertree.hh>
 #include <dune/common/parametertreeparser.hh>
 
-TEST(Dependencies, dunecommonInputParser) {
+TEST_CASE("Dependencies: dunecommonInputParser", "[1]") {
   Dune::ParameterTree parameterSet;
 
   std::string testInPutFile = R"xxx(tolerance = 1e-12
@@ -109,11 +109,11 @@ nu = 0.3
   const auto Emod      = materialParameters.get<double>("Emod");
   const auto nu        = materialParameters.get<double>("nu");
 
-  EXPECT_EQ(tolerance, 1e-12);
-  EXPECT_EQ(mu, 2.7191e+4);
-  EXPECT_EQ(lambda, 4.4364e+4);
-  EXPECT_EQ(thickness, 0.6);
-  EXPECT_EQ(nu, 0.3);
-  EXPECT_EQ(Emod, 1000);
-  EXPECT_EQ(integrationType, "Gauss");
+  CHECK (1e-12 == tolerance);
+  CHECK (2.7191e+4 == mu);
+  CHECK (4.4364e+4 == lambda);
+  CHECK (0.6 == thickness);
+  CHECK (0.3 == nu);
+  CHECK (1000 == Emod);
+  CHECK ("Gauss" == integrationType);
 }

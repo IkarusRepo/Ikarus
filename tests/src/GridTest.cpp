@@ -1,8 +1,8 @@
 //
 // Created by Alex on 25.05.2021.
 //
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+//#include <gmock/gmock.h>
+//#include <gtest/gtest.h>
 
 #include "testHelpers.h"
 
@@ -11,7 +11,7 @@
 #include <ikarus/Geometries/GeometryType.h>
 #include <ikarus/Grids/GridHelper/griddrawer.h>
 #include <ikarus/Grids/SimpleGrid/SimpleGrid.h>
-
+#include <catch2/catch_test_macros.hpp>
 /** @addtogroup Tests
  *  This module includes all tests
  *  @{
@@ -34,7 +34,7 @@
  *   0------------1------------4------------6   \n
  *      11              14           17         \n
  */
-TEST(GridTest, GridViewTest) {
+TEST_CASE("GridTest: GridViewTest", "[1]") {
   using namespace Ikarus::Grid;
   using Grid = SimpleGrid<2, 2>;
   SimpleGridFactory<2, 2> gridFactory;
@@ -64,12 +64,12 @@ TEST(GridTest, GridViewTest) {
   Grid grid = gridFactory.createGrid();
 
   auto gridView = grid.leafGridView();
-  EXPECT_EQ(edges(gridView).size(), 9);
-  EXPECT_EQ(surfaces(gridView).size(), 3);
-  EXPECT_EQ(vertices(gridView).size(), 7);
+  CHECK (9 == edges(gridView).size());
+  CHECK (3 == surfaces(gridView).size());
+  CHECK (7 == vertices(gridView).size());
 
-  int expectedEdgeId = 0;
-  std::vector<std::array<int, 2>> expectedEdgeVertexId;
+  std::size_t expectedEdgeId = 0;
+  std::vector<std::array<size_t, 2>> expectedEdgeVertexId;
   expectedEdgeVertexId.push_back({0, 2});
   expectedEdgeVertexId.push_back({0, 1});
   expectedEdgeVertexId.push_back({1, 3});
@@ -84,12 +84,12 @@ TEST(GridTest, GridViewTest) {
 
   int elementCounter = 0;
   for (auto& edge : edges(gridView)) {
-    { EXPECT_EQ(indexSet.index(edge), expectedEdgeId++); }
+    CHECK (expectedEdgeId++ == indexSet.index(edge));
 
     int vertexCounter = 0;
     for (auto& vertex : vertices(edge)) {
-      EXPECT_EQ(vertex.type(), Ikarus::GeometryType::vertex);
-      EXPECT_EQ(indexSet.index(vertex), expectedEdgeVertexId[elementCounter][vertexCounter]);
+      CHECK (Ikarus::GeometryType::vertex == vertex.type());
+      CHECK (expectedEdgeVertexId[elementCounter][vertexCounter] == indexSet.index(vertex));
       ++vertexCounter;
     }
     ++elementCounter;
@@ -104,23 +104,23 @@ TEST(GridTest, GridViewTest) {
   for (auto& singleElement : surfaces(gridView)) {
     int edgeCounter = 0;
     for (auto& edge : edges(singleElement)) {
-      EXPECT_EQ(edge.type(), Ikarus::GeometryType::linearLine);
+      CHECK (Ikarus::GeometryType::linearLine == edge.type());
       ++edgeCounter;
     }
     ++eleCounter;
   }
   auto ele1 = surfaces(gridView).begin();
-  EXPECT_THROW([[maybe_unused]] auto e = ele1->subEntities(3), std::logic_error);
-  EXPECT_EQ(ele1->subEntities(2), 4);
-  EXPECT_EQ(ele1->subEntities(1), 4);
+  CHECK_THROWS_AS (ele1->subEntities(3), std::logic_error);
+  CHECK (4 == ele1->subEntities(2));
+  CHECK (4 == ele1->subEntities(1));
   ++ele1;
-  EXPECT_THROW([[maybe_unused]] auto e = ele1->subEntities(3), std::logic_error);
-  EXPECT_EQ(ele1->subEntities(2), 4);
-  EXPECT_EQ(ele1->subEntities(1), 4);
+  CHECK_THROWS_AS (ele1->subEntities(3), std::logic_error);
+  CHECK (4 == ele1->subEntities(2));
+  CHECK (4 == ele1->subEntities(1));
   ++ele1;
-  EXPECT_THROW([[maybe_unused]] auto e = ele1->subEntities(3), std::logic_error);
-  EXPECT_EQ(ele1->subEntities(2), 3);
-  EXPECT_EQ(ele1->subEntities(1), 3);
+  CHECK_THROWS_AS (ele1->subEntities(3), std::logic_error);
+  CHECK (3 == ele1->subEntities(2));
+  CHECK (3 == ele1->subEntities(1));
 }
 
 /**
@@ -128,7 +128,7 @@ TEST(GridTest, GridViewTest) {
  * \test This test checks the insertion of vertices and elements in a SimpleGrid<2,3>
  *
  */
-TEST(GridTest, GridView3DSurfaceTest) {
+TEST_CASE("GridTest: GridView3DSurfaceTest", "[1]") {
   using namespace Ikarus::Grid;
   using Grid = SimpleGrid<2, 3>;
   SimpleGridFactory<2, 3> gridFactory;
@@ -157,24 +157,24 @@ TEST(GridTest, GridView3DSurfaceTest) {
 
   Grid actualGrid = gridFactory.createGrid();
   auto gridView   = actualGrid.leafGridView();
-  EXPECT_EQ(edges(gridView).size(), 9);
-  EXPECT_EQ(surfaces(gridView).size(), 3);
-  EXPECT_EQ(vertices(gridView).size(), 7);
+  CHECK (9 == edges(gridView).size());
+  CHECK (3 == surfaces(gridView).size());
+  CHECK (7 == vertices(gridView).size());
 
   for (int i = 0; auto&& vertex : vertices(gridView)) {
-    EXPECT_EQ(vertex.type(), Ikarus::GeometryType::vertex);
-    EXPECT_EQ(vertex.getPosition(), verticesVec[i]);
+    CHECK (Ikarus::GeometryType::vertex == vertex.type());
+    CHECK (verticesVec[i] == vertex.getPosition());
     ++i;
   }
 
   auto&& eleIterator = surfaces(gridView).begin();
-  EXPECT_EQ(eleIterator->type(), Ikarus::GeometryType::linearQuadrilateral);
+  CHECK (Ikarus::GeometryType::linearQuadrilateral == eleIterator->type());
   ++eleIterator;
-  EXPECT_EQ(eleIterator->type(), Ikarus::GeometryType::linearQuadrilateral);
+  CHECK (Ikarus::GeometryType::linearQuadrilateral == eleIterator->type());
   ++eleIterator;
-  EXPECT_EQ(eleIterator->type(), Ikarus::GeometryType::linearTriangle);
+  CHECK (Ikarus::GeometryType::linearTriangle == eleIterator->type());
 
-  std::vector<std::vector<int>> expectedElementEdgeIds;
+  std::vector<std::vector<size_t>> expectedElementEdgeIds;
   expectedElementEdgeIds.push_back({0, 1, 2, 3});
   expectedElementEdgeIds.push_back({2, 4, 5, 6});
   expectedElementEdgeIds.push_back({7, 5, 8});
@@ -185,24 +185,24 @@ TEST(GridTest, GridView3DSurfaceTest) {
   for (auto& singleElement : surfaces(gridView)) {
     int edgeCounter = 0;
     for (auto& edge : edges(singleElement)) {
-      EXPECT_EQ(edge.type(), Ikarus::GeometryType::linearLine);
-      EXPECT_EQ(indexSet.index(edge), expectedElementEdgeIds[eleCounter][edgeCounter]);
+      CHECK (Ikarus::GeometryType::linearLine == edge.type());
+      CHECK (expectedElementEdgeIds[eleCounter][edgeCounter] == indexSet.index(edge));
       ++edgeCounter;
     }
     ++eleCounter;
   }
   auto ele1 = surfaces(gridView).begin();
-  EXPECT_THROW([[maybe_unused]] auto e = ele1->subEntities(3), std::logic_error);
-  EXPECT_EQ(ele1->subEntities(2), 4);
-  EXPECT_EQ(ele1->subEntities(1), 4);
+  CHECK_THROWS_AS (ele1->subEntities(3), std::logic_error);
+  CHECK (4 == ele1->subEntities(2));
+  CHECK (4 == ele1->subEntities(1));
   ++ele1;
-  EXPECT_THROW([[maybe_unused]] auto e = ele1->subEntities(3), std::logic_error);
-  EXPECT_EQ(ele1->subEntities(2), 4);
-  EXPECT_EQ(ele1->subEntities(1), 4);
+  CHECK_THROWS_AS ( ele1->subEntities(3), std::logic_error);
+  CHECK (4 == ele1->subEntities(2));
+  CHECK (4 == ele1->subEntities(1));
   ++ele1;
-  EXPECT_THROW([[maybe_unused]] auto e = ele1->subEntities(3), std::logic_error);
-  EXPECT_EQ(ele1->subEntities(2), 3);
-  EXPECT_EQ(ele1->subEntities(1), 3);
+  CHECK_THROWS_AS ( ele1->subEntities(3), std::logic_error);
+  CHECK (3 == ele1->subEntities(2));
+  CHECK (3 == ele1->subEntities(1));
 }
 
 /**
@@ -210,7 +210,7 @@ TEST(GridTest, GridView3DSurfaceTest) {
  * \test This test checks the insertion of vertices and elements in a SimpleGrid<2,3>
  *
  */
-TEST(GridTest, GridView3DSolidTest) {
+TEST_CASE("GridTest: GridView3DSolidTest", "[1]") {
   using namespace Ikarus::Grid;
   using Grid = SimpleGrid<3, 3>;
   SimpleGridFactory<3, 3> gridFactory;
@@ -241,7 +241,7 @@ TEST(GridTest, GridView3DSolidTest) {
 
   auto gridView = actualGrid.leafGridView();
   // Element   Edge        VertexIDs
-  std::vector<std::vector<std::array<int, 2>>> expectedElementEdgeVertexId;
+  std::vector<std::vector<std::array<size_t, 2>>> expectedElementEdgeVertexId;
   expectedElementEdgeVertexId.emplace_back();
   expectedElementEdgeVertexId[0].push_back({0, 4});  // 0
   expectedElementEdgeVertexId[0].push_back({1, 5});  // 1
@@ -262,18 +262,18 @@ TEST(GridTest, GridView3DSolidTest) {
   expectedElementEdgeVertexId[1].push_back({1, 5});  // 3
   expectedElementEdgeVertexId[1].push_back({5, 8});  // 4
   expectedElementEdgeVertexId[1].push_back({3, 5});  // 4
-  EXPECT_TRUE(!edges(gridView).empty());
-  EXPECT_TRUE(!volumes(gridView).empty());
+  CHECK (!edges(gridView).empty());
+  CHECK (!volumes(gridView).empty());
 
   const auto indexSet = gridView.indexSet();
 
   for (int EleIter = 0; auto& ele : volumes(gridView)) {
-    EXPECT_TRUE(!edges(ele).empty());
+    CHECK (!edges(ele).empty());
     for (int edgeIter = 0; auto& edge : edges(ele)) {
-      EXPECT_TRUE(!vertices(edge).empty());
+      CHECK (!vertices(edge).empty());
       for (int i = 0; auto&& verticesOfEdge : vertices(edge)) {
-        EXPECT_EQ(indexSet.index(verticesOfEdge), expectedElementEdgeVertexId[EleIter][edgeIter][i]);
-        EXPECT_THAT(verticesOfEdge.getPosition(),
+        CHECK (expectedElementEdgeVertexId[EleIter][edgeIter][i] == indexSet.index(verticesOfEdge));
+        CHECK_THAT(verticesOfEdge.getPosition(),
                     EigenApproxEqual(verticesVec[expectedElementEdgeVertexId[EleIter][edgeIter][i]], 1e-15));
         ++i;
       }
@@ -283,21 +283,21 @@ TEST(GridTest, GridView3DSolidTest) {
   }
 
   auto&& eleIterator = volumes(gridView).begin();
-  EXPECT_EQ(eleIterator->type(), Ikarus::GeometryType::linearHexahedron);
+  CHECK (Ikarus::GeometryType::linearHexahedron == eleIterator->type());
   ++eleIterator;
-  EXPECT_EQ(eleIterator->type(), Ikarus::GeometryType::linearTetrahedron);
+  CHECK (Ikarus::GeometryType::linearTetrahedron == eleIterator->type());
 
-  std::vector<int> expectedEdgesAtVertex{3, 4, 3, 5, 3, 5, 3, 3, 3};
+  std::vector<size_t> expectedEdgesAtVertex{3, 4, 3, 5, 3, 5, 3, 3, 3};
   for (int i = 0; auto&& vertex : vertices(gridView))
-    EXPECT_EQ(edges(vertex).size(), expectedEdgesAtVertex[i++]);
+    CHECK (expectedEdgesAtVertex[i++] == edges(vertex).size());
 
   auto ele1 = volumes(gridView).begin();
-  EXPECT_EQ(ele1->subEntities(3), 8);
-  EXPECT_EQ(ele1->subEntities(2), 12);
-  EXPECT_EQ(ele1->subEntities(1), 6);
+  CHECK (8 == ele1->subEntities(3));
+  CHECK (12 == ele1->subEntities(2));
+  CHECK (6 == ele1->subEntities(1));
 
   // surface tests
-  std::vector<std::vector<std::vector<int>>> expectedElementSurfaceVertexId;
+  std::vector<std::vector<std::vector<size_t>>> expectedElementSurfaceVertexId;
   expectedElementSurfaceVertexId.emplace_back();
   expectedElementSurfaceVertexId[0].push_back({0, 2, 4, 6});  // 0
   expectedElementSurfaceVertexId[0].push_back({1, 3, 5, 7});  // 1
@@ -312,7 +312,7 @@ TEST(GridTest, GridView3DSolidTest) {
   expectedElementSurfaceVertexId[1].push_back({1, 3, 5});  // 2
   expectedElementSurfaceVertexId[1].push_back({3, 5, 8});  // 3
 
-  std::vector<std::vector<std::vector<int>>> expectedElementSurfaceEdgeId;
+  std::vector<std::vector<std::vector<size_t>>> expectedElementSurfaceEdgeId;
   expectedElementSurfaceEdgeId.emplace_back();
   expectedElementSurfaceEdgeId[0].push_back({0, 2, 4, 8});    // 0
   expectedElementSurfaceEdgeId[0].push_back({1, 3, 5, 9});    // 1
@@ -327,28 +327,28 @@ TEST(GridTest, GridView3DSolidTest) {
   expectedElementSurfaceEdgeId[1].push_back({13, 14, 15});  // 3
 
   for (int EleIter = 0; auto& ele : volumes(gridView)) {
-    EXPECT_TRUE(!edges(ele).empty());
+    CHECK (!edges(ele).empty());
     for (int surfIter = 0; auto& surf : surfaces(ele)) {
-      EXPECT_TRUE(!vertices(surf).empty());
+      CHECK (!vertices(surf).empty());
       for (int i = 0; auto& verticesOfSurface : vertices(surf)) {
-        EXPECT_EQ(indexSet.index(verticesOfSurface), expectedElementSurfaceVertexId[EleIter][surfIter][i]);
-        EXPECT_THAT(verticesOfSurface.getPosition(),
+        CHECK (expectedElementSurfaceVertexId[EleIter][surfIter][i] == indexSet.index(verticesOfSurface));
+        CHECK_THAT(verticesOfSurface.getPosition(),
                     EigenApproxEqual(verticesVec[expectedElementSurfaceVertexId[EleIter][surfIter][i]], 1e-15));
         ++i;
       }
       for (int i = 0; auto&& edgesOfSurface : edges(surf))
-        EXPECT_EQ(indexSet.index(edgesOfSurface), expectedElementSurfaceEdgeId[EleIter][surfIter][i++]);
+        CHECK (expectedElementSurfaceEdgeId[EleIter][surfIter][i++] == indexSet.index(edgesOfSurface));
 
       ++surfIter;
     }
     ++EleIter;
   }
-  std::vector<int> expectedSurfacesAtVertex{3, 6, 3, 6, 3, 6, 3, 3, 3};
+  std::vector<size_t> expectedSurfacesAtVertex{3, 6, 3, 6, 3, 6, 3, 3, 3};
   for (int i = 0; auto& vertex : vertices(gridView))
-    EXPECT_EQ(surfaces(vertex).size(), expectedSurfacesAtVertex[i++]);
+    CHECK (expectedSurfacesAtVertex[i++] == surfaces(vertex).size());
 }
 
-TEST(GridTest, GridInsertionException) {
+TEST_CASE("GridTest: GridInsertionException", "[1]") {
   using namespace Ikarus::Grid;
   SimpleGridFactory<2, 2> gridFactory;
   using vertexType = Eigen::Vector2d;
@@ -364,22 +364,22 @@ TEST(GridTest, GridInsertionException) {
   std::vector<size_t> elementIndices;
   elementIndices.resize(4);
   elementIndices = {0, 1, 2, 3};
-  EXPECT_THROW(gridFactory.insertElement(Ikarus::GeometryType::linearTriangle, elementIndices), Dune::GridError);
+  CHECK_THROWS_AS (gridFactory.insertElement(Ikarus::GeometryType::linearTriangle, elementIndices), Dune::GridError);
 
-  EXPECT_THROW(gridFactory.insertElement(Ikarus::GeometryType::linearHexahedron, elementIndices), Dune::GridError);
+  CHECK_THROWS_AS (gridFactory.insertElement(Ikarus::GeometryType::linearHexahedron, elementIndices), Dune::GridError);
 
-  EXPECT_THROW(gridFactory.insertElement(Ikarus::GeometryType::linearLine, elementIndices), Dune::GridError);
+  CHECK_THROWS_AS (gridFactory.insertElement(Ikarus::GeometryType::linearLine, elementIndices), Dune::GridError);
   elementIndices.resize(3);
   elementIndices = {0, 1, 2};
 
-  EXPECT_THROW(gridFactory.insertElement(Ikarus::GeometryType::linearQuadrilateral, elementIndices), Dune::GridError);
+  CHECK_THROWS_AS (gridFactory.insertElement(Ikarus::GeometryType::linearQuadrilateral, elementIndices), Dune::GridError);
 }
 
-TEST(GridTest, GridEmptyGridCreation) {
+TEST_CASE("GridTest: GridEmptyGridCreation", "[1]") {
   using namespace Ikarus::Grid;
   SimpleGridFactory<2, 2> gridFactory;
-  EXPECT_THROW(gridFactory.createGrid(), Dune::GridError);
+  CHECK_THROWS_AS (gridFactory.createGrid(), Dune::GridError);
   gridFactory.insertVertex({2.0, 1.0});
-  EXPECT_THROW(gridFactory.createGrid(), Dune::GridError);
+  CHECK_THROWS_AS (gridFactory.createGrid(), Dune::GridError);
 }
 /*\@}*/

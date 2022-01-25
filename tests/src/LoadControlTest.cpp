@@ -1,10 +1,10 @@
 //
 // Created by Alex on 21.07.2021.
 //
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+//#include <gmock/gmock.h>
+//#include <gtest/gtest.h>
 
-#include "testHelpers.h"
+//#include "testHelpers.h"
 
 #include "spdlog/spdlog.h"
 
@@ -24,8 +24,9 @@
 #include <ikarus/Grids/GridHelper/griddrawer.h>
 #include <ikarus/Grids/SimpleGrid/SimpleGrid.h>
 #include <ikarus/LinearAlgebra/NonLinearOperator.h>
+#include <catch2/catch_test_macros.hpp>
 
-TEST(LoadControlTest, GridLoadControlTest) {
+TEST_CASE("LoadControlTest: GridLoadControlTest", "[1]") {
   using namespace Ikarus::Grid;
   using Grid = SimpleGrid<2, 2>;
   SimpleGridFactory<2, 2> gridFactory;
@@ -111,7 +112,7 @@ TEST(LoadControlTest, GridLoadControlTest) {
   time.value[0]      = 0.0;
   auto& Fint         = fintFunction(time);
   const int dofsFree = ((elex + 1) * (eley + 1) - (elex + 1)) * 2;
-  EXPECT_EQ(Fint.size(), dofsFree);
+  CHECK (dofsFree == Fint.size());
   auto linSolver = Ikarus::ILinearSolver<double>(Ikarus::SolverTypeTag::SparseLU);
   auto nonLinOp  = Ikarus::NonLinearOperator(linearAlgebraFunctions(fintFunction, KFunctionSparse), parameter(time));
   auto nr        = Ikarus::NewtonRaphson(

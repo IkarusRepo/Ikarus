@@ -2,8 +2,8 @@
 // Created by Alex on 21.04.2021.
 //
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+//#include <gmock/gmock.h>
+//#include <gtest/gtest.h>
 
 #include <fstream>
 #include <vector>
@@ -16,7 +16,9 @@
 #include <ikarus/FiniteElements/InterfaceFiniteElement.h>
 #include <ikarus/Geometries/GeometryType.h>
 #include <ikarus/Grids/SimpleGrid/SimpleGrid.h>
-
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
+using namespace Catch;
 using namespace Ikarus;
 
 class TestFE {
@@ -45,7 +47,7 @@ public:
   static double calculateScalar([[maybe_unused]] const Ikarus::FiniteElements::FErequirements& par) { return 5; }
 };
 
-TEST(FiniteElementInterfaceTest, createGenericFEList) {
+TEST_CASE("FiniteElementInterfaceTest: createGenericFEList", "[1]") {
   using namespace Ikarus::Grid;
   using namespace Ikarus::FiniteElements;
 
@@ -104,17 +106,17 @@ TEST(FiniteElementInterfaceTest, createGenericFEList) {
       feParameter.matrixAffordances = stiffness;
       feParameter.variables         = feValues;
       const auto [KEle, fintEle]    = calculateLocalSystem(fe, feParameter);
-      EXPECT_EQ(dofSize(fe), 8);
-      EXPECT_EQ(calculateVector(fe, feParameter).size(), 8);
-      EXPECT_DOUBLE_EQ(calculateScalar(fe, feParameter), 0.0);
-      EXPECT_EQ(calculateMatrix(fe, feParameter).cols(), 8);
-      EXPECT_EQ(calculateMatrix(fe, feParameter).rows(), 8);
+      CHECK (8 == dofSize(fe));
+      CHECK (8 == calculateVector(fe, feParameter).size());
+      CHECK (0.0 == Approx (calculateScalar(fe, feParameter)));
+      CHECK (8 == calculateMatrix(fe, feParameter).cols());
+      CHECK (8 == calculateMatrix(fe, feParameter).rows());
       feParameter.matrixAffordances = mass;
-      EXPECT_THROW(calculateMatrix(fe, feParameter), std::logic_error);
-      EXPECT_THROW(calculateLocalSystem(fe, feParameter), std::logic_error);
-      EXPECT_EQ(KEle.rows(), 8);
-      EXPECT_EQ(KEle.cols(), 8);
-      EXPECT_EQ(fintEle.size(), 8);
+      CHECK_THROWS_AS (calculateMatrix(fe, feParameter), std::logic_error);
+      CHECK_THROWS_AS (calculateLocalSystem(fe, feParameter), std::logic_error);
+      CHECK (8 == KEle.rows());
+      CHECK (8 == KEle.cols());
+      CHECK (8 == fintEle.size());
     }
     feValues.add(Ikarus::EntityType::vertex, vars[0]);
     feValues.add(Ikarus::EntityType::edge, vars[0]);
@@ -135,32 +137,32 @@ TEST(FiniteElementInterfaceTest, createGenericFEList) {
       feParameter.variables         = feValues;
       feParameter.data              = dataFeValues;
       const auto [KEle, fintEle]    = calculateLocalSystem(fe, feParameter);
-      EXPECT_EQ(dofSize(fe), 8);
-      EXPECT_EQ(calculateVector(fe, feParameter).size(), 8);
-      EXPECT_DOUBLE_EQ(calculateScalar(fe, feParameter), 0.0);
-      EXPECT_EQ(calculateMatrix(fe, feParameter).cols(), 8);
-      EXPECT_EQ(calculateMatrix(fe, feParameter).rows(), 8);
+      CHECK (8 == dofSize(fe));
+      CHECK (8 == calculateVector(fe, feParameter).size());
+      CHECK (0.0 == Approx (calculateScalar(fe, feParameter)));
+      CHECK (8 == calculateMatrix(fe, feParameter).cols());
+      CHECK (8 == calculateMatrix(fe, feParameter).rows());
       feParameter.matrixAffordances = mass;
-      EXPECT_THROW(calculateMatrix(fe, feParameter), std::logic_error);
-      EXPECT_THROW(calculateLocalSystem(fe, feParameter), std::logic_error);
-      EXPECT_EQ(KEle.rows(), 8);
-      EXPECT_EQ(KEle.cols(), 8);
-      EXPECT_EQ(fintEle.size(), 8);
+      CHECK_THROWS_AS (calculateMatrix(fe, feParameter), std::logic_error);
+      CHECK_THROWS_AS (calculateLocalSystem(fe, feParameter), std::logic_error);
+      CHECK (8 == KEle.rows());
+      CHECK (8 == KEle.cols());
+      CHECK (8 == fintEle.size());
     }
   }
 
   const auto entityIDDofPair = getEntityVariableTuple(fes[0]);
   using namespace Ikarus::Variable;
-  std::vector<std::pair<size_t, Ikarus::Variable::VariableTags>> idtagExpected;
+  std::vector<std::pair<int, Ikarus::Variable::VariableTags>> idtagExpected;
   idtagExpected.emplace_back(0, VariableTags::displacement2d);
   idtagExpected.emplace_back(1, VariableTags::displacement2d);
   idtagExpected.emplace_back(2, VariableTags::displacement2d);
   idtagExpected.emplace_back(3, VariableTags::displacement2d);
   for (int i = 0; auto&& [entityID, entityType, varVec] : entityIDDofPair) {
-    EXPECT_EQ(entityID, idtagExpected[i].first);
-    EXPECT_EQ(varVec.size(), 1);
-    EXPECT_EQ(entityType, Ikarus::EntityType::vertex);
-    EXPECT_EQ(varVec[0], idtagExpected[i].second);
+    CHECK (idtagExpected[i].first == entityID);
+    CHECK (1 == varVec.size());
+    CHECK (Ikarus::EntityType::vertex == entityType);
+    CHECK (idtagExpected[i].second == varVec[0]);
     ++i;
   }
 
@@ -183,10 +185,10 @@ TEST(FiniteElementInterfaceTest, createGenericFEList) {
   FiniteElements::FEValues feDataValues;
   feDataValues.add(Ikarus::EntityType::vertex, datas);
 
-  EXPECT_THAT(feDataValues.get(Ikarus::EntityType::vertex).size(), 1);
-  EXPECT_THAT(feDataValues.get(Ikarus::EntityType::edge).size(), 0);
-  EXPECT_THAT(feDataValues.get(Ikarus::EntityType::surface).size(), 0);
-  EXPECT_THAT(feDataValues.get(Ikarus::EntityType::volume).size(), 0);
+  CHECK(feDataValues.get(Ikarus::EntityType::vertex).size()== 1);
+  CHECK(feDataValues.get(Ikarus::EntityType::edge).size()== 0);
+  CHECK(feDataValues.get(Ikarus::EntityType::surface).size()== 0);
+  CHECK(feDataValues.get(Ikarus::EntityType::volume).size()== 0);
 
   Ikarus::FiniteElements::IFiniteElement fe((TestFE()));
   // check behaviour of dummy fe calculate scalar function before adding data and after
@@ -196,12 +198,12 @@ TEST(FiniteElementInterfaceTest, createGenericFEList) {
   feParameter.matrixAffordances = stiffness;
   feParameter.variables         = feValues;
   feParameter.data              = feDataValues;
-  EXPECT_DOUBLE_EQ(calculateScalar(fe, feParameter), 30.0);
+  CHECK (30.0 == Approx (calculateScalar(fe, feParameter)));
   datas[0] = VariableFactory::createVariable(VariableTags::displacement1d);
-  EXPECT_DOUBLE_EQ(calculateScalar(fe, feParameter), 5.0);
+  CHECK (5.0 == Approx (calculateScalar(fe, feParameter)));
 
   Ikarus::FiniteElements::IFiniteElement fe2((TestFE2()));  // check if element without optional data is accepted
 
   feParameter.data = std::nullopt;
-  EXPECT_DOUBLE_EQ(calculateScalar(fe2, feParameter), 5.0);
+  CHECK (5.0 == Approx (calculateScalar(fe2, feParameter)));
 }

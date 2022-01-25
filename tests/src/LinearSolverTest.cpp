@@ -1,8 +1,8 @@
 //
 // Created by Alex on 21.07.2021.
 //
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+//#include <gmock/gmock.h>
+//#include <gtest/gtest.h>
 
 #include "testHelpers.h"
 
@@ -23,8 +23,8 @@
 #include <ikarus/Grids/SimpleGrid/SimpleGrid.h>
 #include <ikarus/LinearAlgebra/NonLinearOperator.h>
 #include <ikarus/Solver/LinearSolver/LinearSolver.h>
-
-TEST(LinearSolverTest, LinearSolverTest1) {
+#include <catch2/catch_test_macros.hpp>
+TEST_CASE("LinearSolverTest: LinearSolverTest1", "[1]") {
   using namespace Ikarus::Grid;
   using namespace Ikarus;
   using Grid = SimpleGrid<2, 2>;
@@ -82,14 +82,14 @@ TEST(LinearSolverTest, LinearSolverTest1) {
   const auto sol = solver.solve(b);
 
   const auto& Asparse = sparseMatrixAssembler.getReducedMatrix(FiniteElements::stiffness);
-  EXPECT_THAT(Asparse, EigenApproxEqual(A, 1e-14));
+  CHECK_THAT (Eigen::MatrixXd(Asparse), EigenApproxEqual(A, 1e-14));
   Ikarus::ILinearSolver<double> solverCG(SolverTypeTag::ConjugateGradient);
   solverCG.compute(Asparse);
   const auto sol2 = solverCG.solve(b);
-  EXPECT_THROW(solver.compute(Asparse), std::logic_error);
+  CHECK_THROWS_AS (solver.compute(Asparse), std::logic_error);
 
   Ikarus::ILinearSolver<double> solver3(SolverTypeTag::CholmodSupernodalLLT);
   solver3.compute(Asparse);
   const auto sol3 = solver3.solve(b);
-  EXPECT_THAT(sol3, EigenApproxEqual(sol2, 1e-11));
+  CHECK_THAT (sol3, EigenApproxEqual(sol2, 1e-11));
 }
