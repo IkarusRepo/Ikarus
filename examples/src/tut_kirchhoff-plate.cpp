@@ -204,26 +204,18 @@ int main() {
     /// Create non-linear operator with potential energy
     Eigen::VectorXd w;
     w.setZero(basis.size());
-    double lambda = 0.0;
-
-    auto fintFunction = [&](auto&& lambdaL, auto&& wL) -> auto& {
-      return denseAssembler.getVector(forces, wL, lambdaL);
-    };
-    auto KFunction = [&](auto&& lambdaL, auto&& wL) -> auto& {
-      return denseAssembler.getMatrix(stiffness, wL, lambdaL);
-    };
 
     const double totalLoad = 2000;
-    const auto& K  = KFunction(totalLoad, w);
-    const auto& R  = fintFunction(totalLoad, w);
+    const auto& K  = denseAssembler.getMatrix(stiffness, w, totalLoad);
+    const auto& R  = denseAssembler.getVector(forces, w, totalLoad);
     Eigen::LDLT<Eigen::MatrixXd> solver;
     solver.compute(K);
     w -= solver.solve(R);
 
     //Output solution to vtk
-    auto disp = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
+    auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
     Dune::SubsamplingVTKWriter vtkWriter(gridView,Dune::refinementLevels(2));
-    vtkWriter.addVertexData(w, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
+    vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
     vtkWriter.write("Test_KPlate");
 
 
