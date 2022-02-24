@@ -73,8 +73,8 @@ grid->globalRefine(1);
   auto gridView = grid->leafGridView();
 
   using namespace Dune::Functions::BasisFactory;
-//    auto basis = makeBasis(gridView, power<gridDim>(gridView.getPreBasis(), FlatInterleaved()));
-  auto basis = makeBasis(gridView, power<gridDim>(lagrange<1>(), FlatInterleaved()));
+    auto basis = makeBasis(gridView, power<gridDim>(gridView.getPreBasis(), FlatInterleaved()));
+//  auto basis = makeBasis(gridView, power<gridDim>(lagrange<1>(), FlatInterleaved()));
   std::cout << "This gridview cotains: " << std::endl;
   std::cout << gridView.size(2) << " vertices" << std::endl;
   std::cout << gridView.size(1) << " edges" << std::endl;

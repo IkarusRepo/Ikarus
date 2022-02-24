@@ -59,6 +59,7 @@ int main() {
 
     /// Displacement at center of clamped square plate
 
+
     /// Calculate L_2 error for simply supported case
 
   /// Draw L_2 error over dofs count
