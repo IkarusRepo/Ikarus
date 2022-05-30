@@ -15,6 +15,7 @@ namespace Ikarus::plot {
     std::vector<double> y = matplot::transform(x, [&f](auto x) { return f(x); });
     matplot::plot(x, y, "-o");
     matplot::hold(matplot::on);
+    matplot::show();
   }
 
 }  // namespace Ikarus::plot
