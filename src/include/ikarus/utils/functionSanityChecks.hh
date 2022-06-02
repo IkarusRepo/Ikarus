@@ -158,7 +158,7 @@ namespace Ikarus {
 
     const bool checkPassed = Dune::FloatCmp::le(3.0, slope, checkFlags.tolerance);
 
-    if (checkFlags.draw) {
+    if (checkFlags.writeSlopeStatement) {
       spdlog::info("Hessian check:");
       spdlog::info("The slope should be 3. It seems to be {}.", slope);
       if (checkPassed)
