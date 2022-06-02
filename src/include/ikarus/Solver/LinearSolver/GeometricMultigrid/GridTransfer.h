@@ -7,10 +7,13 @@
 #include <vector>
 #include <memory>
 
+#include <dune/localfunctions/lagrange/pqkfactory.hh>
+
 namespace Ikarus{
 template< typename Grid>
 class GridTransfer {
 
+  static constexpr int gridDim = Grid::dimension;
 
 public:
   GridTransfer(const std::shared_ptr<Grid>& p_grid) : grid{p_grid}{}
@@ -25,8 +28,56 @@ public:
     coarse = transferMatrices[coarseID].transpose() * fine;
   }
 
-  void createOperators()
+  void createOperators( int numDofPerNode)
   {
+    transferMatrices.resize(grid->maxLevel());
+    for (int level = 0; level < grid->maxLevel(); ++level) {
+
+      auto coarseGridView = grid->levelGridView(level);
+      auto fineGridView   = grid->levelGridView(level+1);
+
+      const auto& coarseIndexSet = coarseGridView.indexSet();
+      const auto& fineIndexSet   = fineGridView.indexSet();
+
+      // A factory for the shape functions
+      typedef typename Dune::PQkLocalFiniteElementCache<double, double, gridDim, 1> P1FECache;
+      typedef typename P1FECache::FiniteElementType FEType;
+      P1FECache p1FECache;
+
+      transferMatrices[level].resize(numDofPerNode * grid->size(level+1, gridDim), numDofPerNode * grid->size(level, gridDim));
+
+      std::vector<Dune::FieldVector<double, 1>> NcoarseEvaluated;
+
+      for (auto& coarseElement : elements(coarseGridView)) {
+        const FEType& coarseFE = p1FECache.get(coarseElement.type());
+        const int numNCoarse   = coarseFE.localBasis().size();  // Chapter 8
+        NcoarseEvaluated.resize(numNCoarse);
+
+        for (auto& childsElement : descendantElements(coarseElement, 1)) {
+          const FEType& fineFE = p1FECache.get(coarseElement.type());
+          const int numNFine   = fineFE.localBasis().size();
+
+          // CoarseIndex Set Chapter 5.6
+          const auto geoInFather = childsElement.geometryInFather();
+          const auto& fineReferenceElement
+              = Dune::ReferenceElements<double, gridDim>::general(childsElement.type());  // Chapter 5.5
+          for (int i = 0; i < numNFine; ++i) {
+            const auto fineKey                        = fineFE.localCoefficients().localKey(i);
+            const auto nodalPositionInChildCoordinate = fineReferenceElement.position(fineKey.subEntity(), fineKey.codim());
+            const auto localInFather                  = geoInFather.global(nodalPositionInChildCoordinate);
+            coarseFE.localBasis().evaluateFunction(localInFather, NcoarseEvaluated);
+            const size_t globalFine = fineIndexSet.subIndex(childsElement, fineKey.subEntity(), fineKey.codim());
+
+            for (int j = 0; j < numNCoarse; ++j) {
+              const auto coarseKey      = coarseFE.localCoefficients().localKey(j);
+              const size_t globalCoarse = coarseIndexSet.subIndex(coarseElement, coarseKey.subEntity(), coarseKey.codim());
+              transferMatrices[level].block(globalFine * numDofPerNode, globalCoarse * numDofPerNode,numDofPerNode, numDofPerNode)
+                  = NcoarseEvaluated[j] * Eigen::MatrixXd::Identity(numDofPerNode,numDofPerNode);
+            }
+          }
+        }
+      }
+    }
 
     // ask grid how many levels exist
     //resize pVector accordingly
