@@ -7,12 +7,16 @@
 
 #include "testHelpers.hh"
 
+#include <dune/functions/functionspacebases/basistags.hh>
 #include <dune/grid/yaspgrid.hh>
 #include <dune/localfunctions/lagrange/pqkfactory.hh>
 
 #include <Eigen/Core>
 
-#include <ikarus/solver/linearSolver/GeometricMultigrid/gridTransfer.h>
+#include <ikarus/solver/linearSolver/geometricMultigrid/gridTransfer.h>
+//#include <dune/functions/functionspacebases/boundarydofs.hh>
+#include <dune/functions/functionspacebases/lagrangebasis.hh>
+#include <dune/functions/functionspacebases/powerbasis.hh>
 
 TEST(MultiGrid, TransferOperator) {
   constexpr int gridDim = 2;
@@ -41,6 +45,9 @@ TEST(MultiGrid, TransferOperator) {
 //  P1FECache p1FECache;
 
   constexpr int numDofPerNode = 2;
+
+  using namespace Dune::Functions::BasisFactory;
+  auto preBasisFactory = power<gridDim>(lagrange<1>(), FlatInterleaved());
 
 //  Eigen::MatrixXd P(numDofPerNode * grid->size(1, gridDim), numDofPerNode * grid->size(0, gridDim));
 //
@@ -78,7 +85,7 @@ TEST(MultiGrid, TransferOperator) {
 
   Ikarus::GridTransfer transfer(grid);
 
-  transfer.createOperators(numDofPerNode);
+  transfer.createOperators(preBasisFactory);
 
 
 

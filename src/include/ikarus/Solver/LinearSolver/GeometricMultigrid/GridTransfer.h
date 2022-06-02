@@ -28,9 +28,11 @@ public:
     coarse = transferMatrices[coarseID].transpose() * fine;
   }
 
-  void createOperators( int numDofPerNode)
+  template<typename PreBasisFactory>
+  void createOperators(const PreBasisFactory& preBasisFactory)
   {
     transferMatrices.resize(grid->maxLevel());
+
     for (int level = 0; level < grid->maxLevel(); ++level) {
 
       auto coarseGridView = grid->levelGridView(level);
@@ -39,22 +41,26 @@ public:
       const auto& coarseIndexSet = coarseGridView.indexSet();
       const auto& fineIndexSet   = fineGridView.indexSet();
 
-      // A factory for the shape functions
-      typedef typename Dune::PQkLocalFiniteElementCache<double, double, gridDim, 1> P1FECache;
-      typedef typename P1FECache::FiniteElementType FEType;
-      P1FECache p1FECache;
+      auto coarseBasis = makeBasis(coarseGridView,preBasisFactory);
+      constexpr int numDofPerNode = decltype(coarseBasis)::PreBasis::Node::CHILDREN;
+      auto fineBasis = makeBasis(fineGridView,preBasisFactory);
+      auto coarseLocalView = coarseBasis.localView();
+      auto fineLocalView = fineBasis.localView();
 
       transferMatrices[level].resize(numDofPerNode * grid->size(level+1, gridDim), numDofPerNode * grid->size(level, gridDim));
 
       std::vector<Dune::FieldVector<double, 1>> NcoarseEvaluated;
 
       for (auto& coarseElement : elements(coarseGridView)) {
-        const FEType& coarseFE = p1FECache.get(coarseElement.type());
+
+        coarseLocalView.bind(coarseElement);
+        const auto& coarseFE = coarseLocalView.tree().child(0).finiteElement();
         const int numNCoarse   = coarseFE.localBasis().size();  // Chapter 8
         NcoarseEvaluated.resize(numNCoarse);
 
         for (auto& childsElement : descendantElements(coarseElement, 1)) {
-          const FEType& fineFE = p1FECache.get(coarseElement.type());
+          fineLocalView.bind(childsElement);
+          const auto& fineFE = fineLocalView.tree().child(0).finiteElement();
           const int numNFine   = fineFE.localBasis().size();
 
           // CoarseIndex Set Chapter 5.6
@@ -78,12 +84,6 @@ public:
         }
       }
     }
-
-    // ask grid how many levels exist
-    //resize pVector accordingly
-    //code from Test
-
-    // write new tests in test file
   }
 
 private:
