@@ -106,7 +106,7 @@ auto integrate(T &&f, const double a, const double b, const double tol_)
     m = (a+b)/2.; h = (b-a)/2.;
     std::array<ScalarType,13> y = {f(a),f(m-x1*h),f(m-alpha*h),f(m-x2*h),f(m-beta*h),f(m-x3*h),f(m),
                     f(m+x3*h),f(m+beta*h),f(m+x2*h),f(m+alpha*h),f(m+x1*h) ,f(b)};
-
+    y[1]=f(m-x1*h);
     ScalarType fa = y[0];
     ScalarType fb = y[12];
 
