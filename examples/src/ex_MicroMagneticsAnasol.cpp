@@ -50,7 +50,7 @@ auto magnetoStaticEnergy(F&& f, DF&& df, const double rho, const double R, const
       return 0;
     else
     return ((-fac) * (std::comp_ellint_1(nom / denom)) + std::comp_ellint_1(nom / fac) * denom) * mzrhoPrime * rhoS
-           / (denom * fac);
+           / (denom * fac)/(4*pi);
   };
   AdaptiveIntegrator::IntegratorC integrator;
   return 8.0 * pi * mzrho *rho* integrator.integrate(magnetoStaticEnergyF, 0, R, tol);
@@ -102,7 +102,7 @@ auto energyIntegratorMag(F&& f, DF&& df, const double R, const double L, const d
 }
 
 int main(int argc, char** argv) {
-  const double R = 0.75;
+  const double R = 2;
   const double L = 0.5;
   Eigen::VectorXd xd(10);
 
