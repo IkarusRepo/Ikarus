@@ -14,7 +14,7 @@ namespace Ikarus::plot {
     std::vector<double> x = matplot::linspace(xRange.first, xRange.second, eValuationPoints);
     std::vector<double> y = matplot::transform(x, [&f](auto x) { return f(x); });
     matplot::plot(x, y, "-o");
-//    matplot::hold(matplot::on);
+    //    matplot::hold(matplot::on);
     matplot::show();
   }
 
