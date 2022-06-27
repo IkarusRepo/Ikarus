@@ -104,64 +104,75 @@ auto energyIntegratorMag(F&& f, DF&& df, const double R, const double L, const d
 }
 
 int main(int argc, char** argv) {
-  const double R = 6;
-  const double L = 0.5;
-  Eigen::VectorXd xd(10);
+  Eigen::VectorXd radii(2);
+  Eigen::Matrix3Xd results(3,2);
+  radii<<0.5, 1;//, 2,3,4,5,6,7,7.5,8,10;
+  for (int i = 0; i < radii.size(); ++i) {
+    const double R = radii[i];
+    const double L = 0.5;
+    std::cout << "R: " << R << " L: " << L << std::endl;
+    Eigen::VectorXd xd(10);
 
-  for (int i = 0; i < xd.size(); ++i)
-    xd[i] = 1.0 / (i * i * i + 0.5);
-  std::cout << std::setprecision(17) << std::endl;
-  std::cout << "Starting coeffs: \n" << xd << std::endl;
+    for (int i = 0; i < xd.size(); ++i)
+      xd[i] = 1.0 / (i * i * i + 0.5);
+    std::cout << std::setprecision(17) << std::endl;
+    std::cout << "Starting coeffs: \n" << xd << std::endl;
 
-  auto f  = [&](auto x) { return fourierAnsatz<double>(xd, x, R); };
-  auto df = [&](auto x) { return fourierAnsatzDerivative<double>(xd, x, R); };
+    auto f  = [&](auto x) { return fourierAnsatz<double>(xd, x, R); };
+    auto df = [&](auto x) { return fourierAnsatzDerivative<double>(xd, x, R); };
 
-  //  Ikarus::plot::drawFunction(f, {0,R}, 100);
-  //  Ikarus::plot::drawFunction(df, {0,R}, 100);
- const double tol = 1e-8;
-  auto energy = [&](auto& d) {
-    auto fdual  = [&](auto x) { return fourierAnsatz(d, x, R); };
-    auto dfdual = [&](auto x) { return fourierAnsatzDerivative(d, x, R); };
-    return energyIntegrator(fdual, dfdual, R, L, tol);
-  };
+    //  Ikarus::plot::drawFunction(f, {0,R}, 100);
+    //  Ikarus::plot::drawFunction(df, {0,R}, 100);
+    const double tol = 1e-8;
+    auto energy      = [&](auto& d) {
+      auto fdual  = [&](auto x) { return fourierAnsatz(d, x, R); };
+      auto dfdual = [&](auto x) { return fourierAnsatzDerivative(d, x, R); };
+      return energyIntegrator(fdual, dfdual, R, L, tol);
+    };
 
-  auto grad = [&](auto&& d) {
-    auto xdR = d.template cast<autodiff::dual>().eval();
-    return autodiff::gradient(energy, wrt(xdR), at(xdR));
-  };
-  Eigen::SparseMatrix<double> hSparse;
-  auto hess = [&](auto&& d) {
-    auto xdR = d.template cast<autodiff::dual2nd>().eval();
-    hSparse  = autodiff::hessian(energy, wrt(xdR), at(xdR)).sparseView();
-    return hSparse;
-  };
+    auto grad = [&](auto&& d) {
+      auto xdR = d.template cast<autodiff::dual>().eval();
+      return autodiff::gradient(energy, wrt(xdR), at(xdR));
+    };
+    Eigen::SparseMatrix<double> hSparse;
+    auto hess = [&](auto&& d) {
+      auto xdR = d.template cast<autodiff::dual2nd>().eval();
+      hSparse  = autodiff::hessian(energy, wrt(xdR), at(xdR)).sparseView();
+      return hSparse;
+    };
 
-  auto nonLinOp = Ikarus::NonLinearOperator(linearAlgebraFunctions(energy, grad, hess), parameter(xd));
+    auto nonLinOp = Ikarus::NonLinearOperator(linearAlgebraFunctions(energy, grad, hess), parameter(xd));
 
-  //  double rhoTest = R/2;
-  //  auto nonLinOpTest = Ikarus::NonLinearOperator(linearAlgebraFunctions(f, df), parameter(rhoTest));
+    //  double rhoTest = R/2;
+    //  auto nonLinOpTest = Ikarus::NonLinearOperator(linearAlgebraFunctions(f, df), parameter(rhoTest));
 
-  //  checkGradient(nonLinOpTest, {.draw = true, .writeSlopeStatement = true});
-  //  checkHessian(nonLinOp, {.draw = false, .writeSlopeStatement = true});
+    //  checkGradient(nonLinOpTest, {.draw = true, .writeSlopeStatement = true});
+    //  checkHessian(nonLinOp, {.draw = false, .writeSlopeStatement = true});
 
-  auto tr = Ikarus::makeTrustRegion(nonLinOp);
-  tr->setup({.verbosity = 1, .Delta0 = 1});
-  const auto solverInfo = tr->solve();
+    auto tr = Ikarus::makeTrustRegion(nonLinOp);
+    tr->setup({.verbosity = 1, .Delta0 = 1});
+    const auto solverInfo = tr->solve();
 
-  std::cout << "Resulting coeffs: \n" << xd << std::endl;
+    std::cout << "Resulting coeffs: \n" << xd << std::endl;
 
-  //  std::cout << "First we approximate the integral of f(x) = x^2 on [0,2]" << std::endl;
-  //  AdaptiveIntegrator::IntegratorC integrator;
-  std::cout << std::setprecision(17) << std::endl;
-  std::cout << "ExchangeEnergy: " << energyIntegratorEX(f, df, R, L, tol) << std::endl;
-  std::cout << "MagnetoStaticEnergy: " << energyIntegratorMag(f, df, R, L, tol) << std::endl;
+    //  std::cout << "First we approximate the integral of f(x) = x^2 on [0,2]" << std::endl;
+    //  AdaptiveIntegrator::IntegratorC integrator;
+    std::cout << std::setprecision(17) << std::endl;
+    std::cout << "ExchangeEnergy: " << energyIntegratorEX(f, df, R, L, tol) << std::endl;
+    std::cout << "MagnetoStaticEnergy: " << energyIntegratorMag(f, df, R, L, tol) << std::endl;
+    nonLinOp.update<0>();
+    results(0,i)= nonLinOp.value();
+    results(1,i)= energyIntegratorEX(f, df, R, L, tol);
+    results(2,i)=  energyIntegratorMag(f, df, R, L, tol);
+  }
+  std::cout<<results<<std::endl;
   //  integrator.reset();
   //  std::cout<<"IntVal: "<<integrator.integrate(f, 0, R, 1e-8)<<std::endl;
   //  integrator.reset();
 
-  Eigen::VectorXdual xdual(xd.size());
-  xdual             = xd;
-  Eigen::VectorXd g = gradient(energy, autodiff::wrt(xdual), autodiff::at(xdual));
+//  Eigen::VectorXdual xdual(xd.size());
+//  xdual             = xd;
+//  Eigen::VectorXd g = gradient(energy, autodiff::wrt(xdual), autodiff::at(xdual));
 
   //  const int tols = 5;
   //  std::vector<double> result1(tols);
@@ -183,6 +194,6 @@ int main(int argc, char** argv) {
   //
   //  }
 
-  auto mz = [&](auto x) { return cos(fourierAnsatz<double>(xd, x, R)); };
-  Ikarus::plot::drawFunction(mz, {0, R}, 100);
+//  auto mz = [&](auto x) { return cos(fourierAnsatz<double>(xd, x, R)); };
+//  Ikarus::plot::drawFunction(mz, {0, R}, 100);
 }
