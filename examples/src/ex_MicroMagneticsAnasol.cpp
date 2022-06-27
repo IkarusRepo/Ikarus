@@ -104,12 +104,12 @@ auto energyIntegratorMag(F&& f, DF&& df, const double R, const double L, const d
 }
 
 int main(int argc, char** argv) {
-  Eigen::VectorXd radii(2);
-  Eigen::Matrix3Xd results(3,2);
-  radii<<0.5, 1;//, 2,3,4,5,6,7,7.5,8,10;
+  Eigen::VectorXd radii(11);
+  Eigen::Matrix3Xd results(3,11);
+  radii<<0.5, 1, 2,3,4,5,6,7,7.5,8,10;
   for (int i = 0; i < radii.size(); ++i) {
     const double R = radii[i];
-    const double L = 0.5;
+    const double L = 0.4;
     std::cout << "R: " << R << " L: " << L << std::endl;
     Eigen::VectorXd xd(10);
 
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
     results(1,i)= energyIntegratorEX(f, df, R, L, tol);
     results(2,i)=  energyIntegratorMag(f, df, R, L, tol);
   }
-  std::cout<<results<<std::endl;
+  std::cout<<results.transpose()<<std::endl;
   //  integrator.reset();
   //  std::cout<<"IntVal: "<<integrator.integrate(f, 0, R, 1e-8)<<std::endl;
   //  integrator.reset();
