@@ -58,12 +58,16 @@ void testLocalFunction(const LF& lf) {
     /// Check spatial derivatives
     /// Check spatial derivatives return sizes
     {
-      const auto spatialAllDerivative = lf.evaluateDerivative(ipIndex, Ikarus::wrt(spatialAll));
-      static_assert(spatialAllDerivative.cols() == gridDim);
-      static_assert(spatialAllDerivative.rows() == localFunctionValueSize);
-      const auto spatialSingleDerivative = lf.evaluateDerivative(ipIndex, Ikarus::wrt(spatial(0)));
-      static_assert(spatialSingleDerivative.cols() == 1);
-      static_assert(spatialSingleDerivative.rows() == localFunctionValueSize);
+      if constexpr (requires {lf.evaluateDerivative(ipIndex, Ikarus::wrt(spatialAll));}) {
+        const auto spatialAllDerivative = lf.evaluateDerivative(ipIndex, Ikarus::wrt(spatialAll));
+        static_assert(spatialAllDerivative.cols() == gridDim);
+        static_assert(spatialAllDerivative.rows() == localFunctionValueSize);
+      }
+      if constexpr(requires { lf.evaluateDerivative(ipIndex, Ikarus::wrt(spatial(0)));}) {
+        const auto spatialSingleDerivative = lf.evaluateDerivative(ipIndex, Ikarus::wrt(spatial(0)));
+        static_assert(spatialSingleDerivative.cols() == 1);
+        static_assert(spatialSingleDerivative.rows() == localFunctionValueSize);
+      }
 
       /// Check if spatial derivatives are really derivatives
       /// Perturb in a random direction in the elements parameter space and check spatial derivative
@@ -266,6 +270,7 @@ TEST(LocalFunctionTests, TestExpressions) {
   constexpr int sizeD = 3;
   using Manifold      = Ikarus::RealTuple<double, sizeD>;
   using Manifold2     = Ikarus::UnitVector<double, sizeD>;
+  using Manifold3      = Ikarus::RealTuple<double, 2>;
   using VectorType    = Eigen::Vector<double, sizeD>;
   using MatrixType    = Eigen::Matrix<double, sizeD, sizeD>;
   constexpr int size  = Manifold::valueSize;
@@ -280,6 +285,7 @@ TEST(LocalFunctionTests, TestExpressions) {
   Dune::BlockVector<Manifold> vBlocked(basis.size());
   Dune::BlockVector<Manifold> vBlocked2(basis.size());
   Dune::BlockVector<Manifold2> vBlocked3(basis.size());
+  Dune::BlockVector<Manifold3> vBlocked4(basis.size());
   for (auto& vsingle : vBlocked)
     vsingle.setValue(0.1 * Eigen::Vector<double, size>::Random() + Eigen::Vector<double, size>::UnitX());
 
@@ -287,6 +293,9 @@ TEST(LocalFunctionTests, TestExpressions) {
     vsingle.setValue(0.5 * Eigen::Vector<double, size>::Random() + 7 * Eigen::Vector<double, size>::UnitX());
 
   for (auto& vsingle : vBlocked3)
+    vsingle.setValue(0.25 * Eigen::Vector<double, size>::Random() + 37 * Eigen::Vector<double, size>::UnitX());
+
+  for (auto& vsingle : vBlocked4)
     vsingle.setValue(0.25 * Eigen::Vector<double, size>::Random() + 37 * Eigen::Vector<double, size>::UnitX());
 
   auto localView = basis.localView();
@@ -301,12 +310,14 @@ TEST(LocalFunctionTests, TestExpressions) {
     Dune::BlockVector<Manifold> vBlockedLocal(fe.size());
     Dune::BlockVector<Manifold> vBlockedLocal2(fe.size());
     Dune::BlockVector<Manifold2> vBlockedLocal3(fe.size());
+    Dune::BlockVector<Manifold3> vBlockedLocal4(fe.size());
 
     for (size_t i = 0; i < fe.size(); ++i) {
       auto globalIndex  = localView.index(localView.tree().localIndex(i));
       vBlockedLocal[i]  = vBlocked[globalIndex[0]];
       vBlockedLocal2[i] = vBlocked2[globalIndex[0]];
       vBlockedLocal3[i] = vBlocked3[globalIndex[0]];
+      vBlockedLocal4[i] = vBlocked4[globalIndex[0]];
     }
 
     auto f = Ikarus::StandardLocalFunction(localBasis, vBlockedLocal);
@@ -384,6 +395,9 @@ TEST(LocalFunctionTests, TestExpressions) {
     auto normSq    = normSquared(f);
     auto logg      = log(dotff);
     auto powf      = pow<3>(dotff);
+
+    auto f2d = Ikarus::StandardLocalFunction(localBasis, vBlockedLocal4);
+    auto epsVoigt      = linearStrains(f2d);
     static_assert(normSq.order() == quadratic);
 
     static_assert(countNonArithmeticLeafNodes(dotff) == 2);
@@ -396,6 +410,7 @@ TEST(LocalFunctionTests, TestExpressions) {
     testLocalFunction(normSq);
     testLocalFunction(logg);
     testLocalFunction(powf);
+    testLocalFunction(epsVoigt);
     for (int gpIndex = 0; auto& gp : rule) {
       EXPECT_DOUBLE_EQ((-2 * 3) * f.evaluateFunction(gpIndex).dot(g.evaluateFunction(gpIndex)),
                        k.evaluateFunction(gpIndex)[0]);

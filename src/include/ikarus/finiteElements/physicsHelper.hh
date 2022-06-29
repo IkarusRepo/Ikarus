@@ -14,10 +14,11 @@ namespace Ikarus {
     for (int i = 0; i < size; ++i)
       EVoigt(i) = E(i, i);
 
-    if constexpr (size > 1) EVoigt(size) = E(0, 1) * 2;
-    if constexpr (size > 2) {
-      EVoigt(size + 1) = E(0, 2) * 2;
-      EVoigt(size + 2) = E(1, 2) * 2;
+    if constexpr (size == 2) EVoigt(2) = E(0, 1) * 2;
+    else if constexpr (size == 3) {
+      EVoigt(size) = E(1, 2) * 2;
+      EVoigt(size+1) = E(0, 2) * 2;
+      EVoigt(size+2) = E(0, 1) * 2;
     }
     return EVoigt;
   }

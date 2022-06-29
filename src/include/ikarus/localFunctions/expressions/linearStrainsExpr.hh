@@ -8,6 +8,7 @@
 #include <ikarus/localFunctions/expressions/unaryExpr.hh>
 #include <ikarus/manifolds/realTuple.hh>
 #include <ikarus/utils/linearAlgebraHelper.hh>
+#include <ikarus/finiteElements/physicsHelper.hh>
 namespace Ikarus {
 
   template <typename E1>
@@ -21,7 +22,7 @@ namespace Ikarus {
     /** \brief Type used for coordinates */
     using ctype                    = typename Traits::ctype;
     static constexpr int valueSize = Traits::valueSize;
-    constexpr int strainSize = valueSize==1 ?  1 : valueSize==2 ? : 3 : 6;
+    static constexpr int displacementSize = Base::E1Raw::valueSize;
     static constexpr int gridDim   = Traits::gridDim;
 
 
@@ -30,88 +31,69 @@ namespace Ikarus {
 
     template <typename LFArgs>
     auto evaluateValueOfExpression(const LFArgs &lfArgs) const {
-      const auto gradM = m.evaluateDerivative(gpIndex, wrt(spatialAll), transformWith(Jinv_));
-      if constexpr (valueSize==1)
-      {
+      const auto gradArgs = replaceWrt(lfArgs,wrt(DerivativeDirections::spatialAll));
+      const auto gradM = evaluateDerivativeImpl(this->m(), gradArgs);
 
-
-        return
-      }
-      const auto m = evaluateFunctionImpl(this->m(), lfArgs);
-      return Eigen::Vector<ctype, 1>((m.transpose() * m).trace());
+        const auto E      = (0.5 * (gradM.transpose() + gradM)).eval();
+        const auto EVoigt = toVoigt(E);
+        return EVoigt;
     }
 
     template <int DerivativeOrder, typename LFArgs>
     auto evaluateDerivativeOfExpression(const LFArgs &lfArgs) const {
-      const auto u = evaluateFunctionImpl(this->m(), lfArgs);
-      if constexpr (DerivativeOrder == 1)  // d(squaredNorm(u))/dx = 2 * u_x * u
-      {
-        const auto u_x = evaluateDerivativeImpl(this->m(), lfArgs);
-        return Ikarus::eval(2 * u.transpose() * u_x);
-      } else if constexpr (DerivativeOrder == 2) {  // dd(squaredNorm(u))/(dxdy) =  2 *u_{x,y} * u + 2*u_x*u_y
-        const auto &[u_x, u_y] = evaluateFirstOrderDerivativesImpl(this->m(), lfArgs);
-        if constexpr (LFArgs::hasNoSpatial and LFArgs::hasTwoCoeff) {
-          const auto alonguArgs = replaceAlong(lfArgs, along(u));
-          const auto u_xyAlongu = evaluateDerivativeImpl(this->m(), alonguArgs);
 
-          return Ikarus::eval(2 * (u_xyAlongu + transpose(u_x) * u_y));
+      if constexpr (DerivativeOrder == 1 and LFArgs::hasSingleCoeff)
+      {
+        Eigen::Matrix<double, valueSize, gridDim> bopI;
+        const auto gradArgs = addWrt(lfArgs,wrt(DerivativeDirections::spatialAll));
+        const auto gradUdI = evaluateDerivativeImpl(this->m(), gradArgs);
+        if constexpr (displacementSize==1)
+        {
+          bopI(0,0) = gradUdI[0].diagonal()(0);
+        }else if constexpr (displacementSize==2) {
+
+          bopI.row(0) << gradUdI[0].diagonal()(0), 0;
+          bopI.row(1) << 0, gradUdI[1].diagonal()(1);
+          bopI.row(2) << gradUdI[1].diagonal()(0), gradUdI[0].diagonal()(1);
+
+          return bopI;
+        }else if constexpr (displacementSize==3) {
+          bopI.row(0) << gradUdI[0].diagonal()(0), 0,0;
+          bopI.row(1) << 0, gradUdI[1].diagonal()(1),0;
+          bopI.row(2) << 0, 0, gradUdI[2].diagonal()(2);
+          bopI.row(3) <<0,gradUdI[2].diagonal()(1),0, gradUdI[1].diagonal()(2);
+          bopI.row(4) << gradUdI[2].diagonal()(0),0, gradUdI[0].diagonal()(2);
+          bopI.row(5) << gradUdI[1].diagonal()(0), gradUdI[0].diagonal()(1),0;
+
+          return bopI;
+        }
+
+      } else if constexpr (DerivativeOrder == 1 and LFArgs::hasOneSpatialAll)
+      {
+#warning This artifically returns a zero
+        return Eigen::Matrix<ctype ,valueSize,gridDim>::Zero();
+      } else if constexpr (DerivativeOrder == 1 and LFArgs::hasOneSpatialSingle)
+      {
+#warning This artifically returns a zero
+        return Eigen::Matrix<ctype ,valueSize,1>::Zero();
+      }
+      else if constexpr (DerivativeOrder == 2) {
+        if constexpr (LFArgs::hasNoSpatial and LFArgs::hasTwoCoeff) {
+
+          return Eigen::Matrix<ctype ,displacementSize,displacementSize>::Zero();
         } else if constexpr (LFArgs::hasOneSpatial and LFArgs::hasSingleCoeff) {
-          const auto u_xy = evaluateDerivativeImpl(this->m(), lfArgs);
           if constexpr (LFArgs::hasOneSpatialSingle and LFArgs::hasSingleCoeff) {
-            return Ikarus::eval(2 * (transpose(u) * u_xy + transpose(u_x) * u_y));
+            return Eigen::Matrix<ctype ,valueSize,displacementSize>::Zero();
           } else if constexpr (LFArgs::hasOneSpatialAll and LFArgs::hasSingleCoeff) {
-            std::array<std::remove_cvref_t<decltype(Ikarus::eval(transpose(u) * u_xy[0]))>, gridDim> res;
-            for (int i = 0; i < gridDim; ++i)
-              res[i] = 2 * (transpose(u) * u_xy[i] + transpose(u_x.col(i)) * u_y);
+            std::array<typename Eigen::Matrix<ctype ,displacementSize,displacementSize>::Zero, gridDim> res;
             return res;
           }
         }
-      } else if constexpr (DerivativeOrder == 3) {  // dd(squaredNorm(u))/(dxdydz) = 2*( u_{x,y,z} * v + u_{x,y} * v_z +
-                                                    // u_{x,z}*v_y + u_x*v_{y,z})
+      } else if constexpr (DerivativeOrder == 3) {
         if constexpr (LFArgs::hasOneSpatialSingle) {
-          const auto argsForDyz = lfArgs.extractSecondWrtArgOrFirstNonSpatial();
-
-          const auto &[u_x, u_y, u_z] = evaluateFirstOrderDerivativesImpl(this->m(), lfArgs);
-          const auto &[u_xy, u_xz]    = evaluateSecondOrderDerivativesImpl(this->m(), lfArgs);
-
-          const auto alonguArgs             = replaceAlong(lfArgs, along(u));
-          const auto argsForDyzalongu_xArgs = replaceAlong(argsForDyz, along(u_x));
-
-          const auto u_xyzAlongu = evaluateDerivativeImpl(this->m(), alonguArgs);
-          const auto u_yzAlongux = evaluateDerivativeImpl(this->m(), argsForDyzalongu_xArgs);
-
-          return Ikarus::eval(2 * (u_xyzAlongu + transpose(u_xy) * u_z + transpose(u_xz) * u_y + u_yzAlongux));
+          return typename Eigen::Matrix<ctype ,displacementSize,displacementSize>::Zero();
         } else if constexpr (LFArgs::hasOneSpatialAll) {
-          // check that the along argument has the correct size
-          const auto &alongMatrix = std::get<0>(lfArgs.alongArgs.args);
-          static_assert(alongMatrix.ColsAtCompileTime == gridDim);
-          static_assert(alongMatrix.RowsAtCompileTime == 1);
-
-          const auto uTimesA = eval(u * alongMatrix);
-          static_assert(uTimesA.RowsAtCompileTime == Base::E1Raw::valueSize);
-          static_assert(uTimesA.ColsAtCompileTime == gridDim);
-
-          const auto &[gradu, u_c0, u_c1]  = evaluateFirstOrderDerivativesImpl(this->m(), lfArgs);
-          const auto &[gradu_c0, gradu_c1] = evaluateSecondOrderDerivativesImpl(this->m(), lfArgs);
-
-          const auto graduTimesA = (gradu * alongMatrix.transpose()).eval();
-          static_assert(graduTimesA.RowsAtCompileTime == Base::E1Raw::valueSize);
-          static_assert(graduTimesA.ColsAtCompileTime == 1);
-
-          const auto argsForDyz = lfArgs.extractSecondWrtArgOrFirstNonSpatial();
-
-          const auto alonguAArgs          = replaceAlong(lfArgs, along(uTimesA));
-          const auto alonggraduTimesAArgs = replaceAlong(argsForDyz, along(graduTimesA));
-
-          const auto u_xyzAlongu            = evaluateDerivativeImpl(this->m(), alonguAArgs);
-          const auto u_c0c1AlongGraduTimesA = evaluateDerivativeImpl(this->m(), alonggraduTimesAArgs);
-          decltype(eval(u_xyzAlongu)) res;
-
-          res = u_xyzAlongu + u_c0c1AlongGraduTimesA;
-          for (int i = 0; i < gridDim; ++i)
-            res += (transpose(u_c1) * gradu_c0[i] + transpose(u_c0) * gradu_c1[i]) * alongMatrix(0, i);
-
-          res *= 2;
+          std::array<typename Eigen::Matrix<ctype ,displacementSize,displacementSize>::Zero, gridDim> res;
           return res;
         } else
           static_assert(
@@ -128,7 +110,7 @@ namespace Ikarus {
   struct LocalFunctionTraits<LinearStrainsExpr<E1>> {
     using E1Raw = std::remove_cvref_t<E1>;
     /** \brief Size of the function value */
-    static constexpr int valueSize = E1Raw::valueSize;
+    static constexpr int valueSize =  E1Raw::valueSize==1 ?  1 : ( E1Raw::valueSize==2 ? 3 : 6);
     /** \brief Type for the points for evaluation, usually the integration points */
     using DomainType = std::common_type_t<typename E1Raw::DomainType>;
     /** \brief Type used for coordinates */
