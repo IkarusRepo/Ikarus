@@ -12,3 +12,4 @@
 #include "expressions/scalarUnaryExpressions/scalarSqrtExpr.hh"
 #include "expressions/scaleExpr.hh"
 #include "expressions/sumExpr.hh"
+#include "expressions/linearStrainsExpr.hh"
