@@ -16,55 +16,33 @@ void draw(const GridView& gridView) {
   auto f  = figure(true);
   auto ax = gca();
   hold(ax, true);
-  if constexpr (GridView::dimensionworld == 3) {
-    for (auto&& edge : subentities(gridView, Dune::Dim<1>())) {
-      std::array<double, 2> xEdge{}, yEdge{}, zEdge{};
-      for (int i = 0; i < 2; ++i) {
-        auto vertCoords = edge.geometry().corner(i);
-        xEdge[i]        = vertCoords[0];
-        yEdge[i]        = vertCoords[1];
-        zEdge[i]        = vertCoords[2];
+  constexpr int edgeCodim = GridView::dimensionworld-1;
+    for (auto&& element : elements(gridView)) {
+      std::array<std::array<double, 2>,GridView::dimensionworld> edgeCoords{};
+      for (int edgeIndex = 0; edgeIndex < element.subEntities(edgeCodim); ++edgeIndex) {
+        auto edge = element.template subEntity<edgeCodim>(edgeIndex);
+        for (int i = 0; i < 2; ++i) {
+          const auto vertCoords = edge.geometry().corner(i);
+          for (int j = 0; j < GridView::dimensionworld; ++j)
+            edgeCoords[j][i] = vertCoords[j];
+
+        }
       }
-
-      auto l = ax->plot3(xEdge, yEdge, zEdge, "-o");
-      l->line_width(2);
-      l->color("black");
-      l->marker_size(10);
-      l->marker_face_color("red");
-    }
-  } else if constexpr (GridView::dimensionworld == 2) {  // FIXME reduce code duplciation
-    for (auto&& edge : edges(gridView)) {
-      std::array<double, 2> xEdge{}, yEdge{};
-      for (int i = 0; i < 2; ++i) {
-        auto vertCoords = edge.geometry().corner(i);
-        xEdge[i]        = vertCoords[0];
-        yEdge[i]        = vertCoords[1];
+      if constexpr (GridView::dimensionworld==3 ) {
+        auto l = ax->plot3(edgeCoords[0], edgeCoords[1], edgeCoords[2], "-o");
+        l->line_width(2);
+        l->color("black");
+        l->marker_size(10);
+        l->marker_face_color("red");
+      } else {
+        auto l = ax->plot(edgeCoords[0], edgeCoords[1], "-o");
+        l->line_width(2);
+        l->color("black");
+        l->marker_size(10);
+        l->marker_face_color("red");
       }
-
-      auto l = ax->plot(xEdge, yEdge, "-o");
-      l->line_width(2);
-      l->color("black");
-      l->marker_size(10);
-      l->marker_face_color("red");
     }
-  }
 
-  else if constexpr (GridView::dimensionworld == 1) {
-    for (auto&& edge : elements(gridView)) {
-      std::array<double, 2> xEdge{}, yEdge{};
-      for (int i = 0; i < 2; ++i) {
-        auto vertCoords = edge.geometry().corner(i);
-        xEdge[i]        = vertCoords[0];
-        yEdge[i]        = 0.0;
-      }
-
-      auto l = ax->plot(xEdge, yEdge, "-o");
-      l->line_width(2);
-      l->color("black");
-      l->marker_size(10);
-      l->marker_face_color("red");
-    }
-  }
 
   f->show();
   f.reset();
