@@ -16,14 +16,16 @@ class GridTransfer {
   static constexpr int gridDim = Grid::dimension;
 
 public:
-  GridTransfer(const std::shared_ptr<Grid>& p_grid) : grid{p_grid}{}
+  GridTransfer(const std::shared_ptr<Grid>& p_grid) : grid{p_grid.get()}{}
+  GridTransfer(const std::unique_ptr<Grid>& p_grid) : grid{p_grid.get()}{}
+  GridTransfer(const Grid* p_grid) : grid{p_grid}{}
 
-  void prolongateFrom(int coarseID, const Eigen::VectorXd& coarse,Eigen::VectorXd& fine )
+  void prolongateFrom(int coarseID, const Eigen::VectorXd& coarse,Eigen::VectorXd& fine ) const
   {
-    fine = transferMatrices[coarseID] * coarse;
+        fine = transferMatrices[coarseID] * coarse;
   }
 
-  void restrictTo(int coarseID, const Eigen::VectorXd& fine,Eigen::VectorXd& coarse )
+  void restrictTo(int coarseID, const Eigen::VectorXd& fine,Eigen::VectorXd& coarse ) const
   {
     coarse = transferMatrices[coarseID].transpose() * fine;
   }
@@ -47,7 +49,7 @@ public:
       auto coarseLocalView = coarseBasis.localView();
       auto fineLocalView = fineBasis.localView();
 
-      transferMatrices[level].resize(numDofPerNode * grid->size(level+1, gridDim), numDofPerNode * grid->size(level, gridDim));
+      transferMatrices[level].setZero(numDofPerNode * grid->size(level+1, gridDim), numDofPerNode * grid->size(level, gridDim));
 
       std::vector<Dune::FieldVector<double, 1>> NcoarseEvaluated;
 
@@ -90,7 +92,7 @@ private:
 
 
   std::vector<Eigen::MatrixXd> transferMatrices;
-  std::shared_ptr<Grid> grid;
+  const Grid* grid;
 
 
 };

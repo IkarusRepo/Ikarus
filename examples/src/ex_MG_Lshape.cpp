@@ -11,12 +11,15 @@
 #include <dune/functions/functionspacebases/powerbasis.hh>
 //#include <dune/grid/yaspgrid.hh>
 //#include <dune/iga/nurbsgrid.hh>
+#include <functional>
+
 #include <dune/grid/uggrid.hh>
 
 #include "spdlog/spdlog.h"
 
 #include <Eigen/Core>
 
+#include "ikarus/solver/linearSolver/geometricMultigrid/geometricMultiGridSolver.hh"
 #include <ikarus/assembler/simpleAssemblers.hh>
 #include <ikarus/controlRoutines/loadControl.hh>
 #include <ikarus/finiteElements/feRequirements.hh>
@@ -30,6 +33,8 @@
 #include <ikarus/utils/drawing/griddrawer.hh>
 #include <ikarus/utils/observer/controlVTKWriter.hh>
 #include <ikarus/utils/observer/nonLinearSolverLogger.hh>
+#include <dune/grid/io/file/vtk/vtkwriter.hh>
+
 
 int main(int argc, char** argv) {
   Dune::MPIHelper::instance(argc, argv);
@@ -71,8 +76,42 @@ int main(int argc, char** argv) {
 
     transfer.createOperators(preBasisFactory);
 
+    auto coarseBasis = makeBasis(grid->levelGridView(0),preBasisFactory);
+    auto fineBasis = makeBasis(grid->levelGridView(1),preBasisFactory);
 
-    MultiGridSolver solver(grid,basis,feVectorCoarse);
+      double lambdaLoad = 1;
+
+        std::vector<Ikarus::NonLinearElasticityFE<decltype(coarseBasis)>> feVectorCoarse;
+        std::vector<Ikarus::NonLinearElasticityFE<decltype(coarseBasis)>> feVectorFine;
+        std::function<Eigen::Vector<double, 2>(const Eigen::Vector<double, 2>&,
+                                                              const double&)> volumeLoad_ =[](auto& globalCoord, auto& lamb) {
+          Eigen::Vector2d fext;
+          fext.setZero();
+          fext[1] = 2 * lamb;
+          fext[0] = 0;
+          return fext;
+        };
+        typename Ikarus::NonLinearElasticityFE<decltype(coarseBasis)>::Settings settings({.emod_=1000, .nu_=0.3, .volumeLoad=volumeLoad_});
+        for (auto& element : elements(coarseBasis.gridView()))
+          feVectorCoarse.emplace_back(coarseBasis, element, settings);
+
+      Ikarus::GeometricMultiGridSolver solver(grid.get(),preBasisFactory,feVectorCoarse);
+
+
+      Eigen::VectorXd d,FextFine;
+
+
+      solver.solve(d,(-FextFine).eval());
+      Eigen::VectorXd dFull;
+      solver.transformToFineFull(d,dFull);
+
+      /// Postprocess
+      auto disp
+          = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 2>>(fineBasis, dFull);
+      Dune::VTKWriter vtkWriter(fineBasis.gridView(), Dune::VTK::conforming);
+      vtkWriter.addVertexData(disp, Dune::VTK::FieldInfo("displacement", Dune::VTK::FieldInfo::Type::vector, 2));
+
+      vtkWriter.write("LShapeMultigrid");
 
 //  std::cout << "This gridview contains: " << std::endl;
 //  std::cout << gridView.size(2) << " vertices" << std::endl;

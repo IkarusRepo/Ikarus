@@ -22,15 +22,15 @@ namespace Ikarus {
   class FlatAssemblerBase {
   public:
     using GridView = typename Basis::GridView;
-    FlatAssemblerBase(const Basis &basis, const FEContainer &fes, const std::vector<bool> &dirichFlags)
-        : basis_{&basis}, feContainer{fes}, dirichletFlags{&dirichFlags} {
+    FlatAssemblerBase( const std::shared_ptr< Basis> &basis, const FEContainer &fes, const std::shared_ptr<std::vector<bool>> &dirichFlags)
+        : basis_{basis}, feContainer{fes}, dirichletFlags{dirichFlags} {
       constraintsBelow_.reserve(basis_->size());
       size_t counter = 0;
       for (auto iv : std::ranges::iota_view{size_t(0), basis_->size()}) {
         constraintsBelow_.emplace_back(counter);
-        if (dirichFlags[iv]) ++counter;
+        if ((*dirichletFlags)[iv]) ++counter;
       }
-      fixedDofs = std::ranges::count(dirichFlags, true);
+      fixedDofs = std::ranges::count(*dirichletFlags, true);
     }
 
     /**  Returns the size of the free degrees of freeedom, which are not fixed by a dirichlet boundary condition */
@@ -42,7 +42,11 @@ namespace Ikarus {
     /**  Creates a the fullsized vector of size #Dof and inserts the values of reduced Vector at the "free" degrees
      * of freedom and
      * writes a zero for the fixed doffs */
-    Eigen::VectorXd createFullVector(const Eigen::VectorXd &reducedVector);
+    void createFullVector(const Eigen::VectorXd &reducedVector, Eigen::VectorXd& fullVector);
+
+    /**  Creates a the reduced sized vector of size #Dof-#constrainded doffsd inserts the values of full Vector at the "free" degrees
+     * of freedom */
+    void createReducedVector(const Eigen::VectorXd &fullVector,Eigen::VectorXd &reducedVector);
 
     /**  Returns the container of finite elements */
     auto &finiteElements() const { return feContainer; }
@@ -59,9 +63,9 @@ namespace Ikarus {
     size_t estimateOfConnectivity() const { return basis_->gridView().size(GridView::dimension) * 8; }
 
   private:
-    Basis const *basis_;
+    const std::shared_ptr< Basis> basis_;
     FEContainer const &feContainer;
-    std::vector<bool> const *dirichletFlags;
+    std::shared_ptr<std::vector<bool>> dirichletFlags;
     std::vector<size_t> constraintsBelow_{};
     size_t fixedDofs{};
   };
@@ -72,7 +76,7 @@ namespace Ikarus {
     using RequirementType = typename FEContainer::value_type::FERequirementType;
 
   public:
-    ScalarAssembler(const Basis &basis, const FEContainer &fes, const std::vector<bool> &dirichFlags)
+    ScalarAssembler( const std::shared_ptr< Basis> &basis, const FEContainer &fes,  const std::shared_ptr< std::vector<bool>> &dirichFlags)
         : FlatAssemblerBase<Basis, FEContainer>(basis, fes, dirichFlags) {}
 
     /** Calculates the scalar quantity which is requested by fErequirements and returns a reference */
@@ -96,7 +100,7 @@ namespace Ikarus {
     using GlobalIndex     = typename FEContainer::value_type::GlobalIndex;
 
   public:
-    VectorFlatAssembler(const Basis &basis, const FEContainer &fes, const std::vector<bool> &dirichFlags)
+    VectorFlatAssembler( const std::shared_ptr< Basis> &basis, const FEContainer &fes, const std::shared_ptr< std::vector<bool>> &dirichFlags)
         : ScalarAssembler<Basis, FEContainer>(basis, fes, dirichFlags) {}
 
     /** Calculates the vectorial quantity which is requested by fErequirements and returns a reference
@@ -126,7 +130,7 @@ namespace Ikarus {
     using GlobalIndex     = typename FEContainer::value_type::GlobalIndex;
 
   public:
-    SparseFlatAssembler(const Basis &basis, const FEContainer &fes, const std::vector<bool> &dirichFlags)
+    SparseFlatAssembler( const std::shared_ptr< Basis> &basis, const FEContainer &fes, const std::shared_ptr< std::vector<bool>> &dirichFlags)
         : VectorFlatAssembler<Basis, FEContainer>(basis, fes, dirichFlags) {}
 
     using GridView = typename Basis::GridView;
@@ -182,7 +186,7 @@ namespace Ikarus {
   public:
     using RequirementType = typename FEContainer::value_type::FERequirementType;
     using GlobalIndex     = typename FEContainer::value_type::GlobalIndex;
-    explicit DenseFlatAssembler(const Basis &basis, const FEContainer &fes, const std::vector<bool> &dirichFlags)
+    explicit DenseFlatAssembler( const std::shared_ptr< Basis> &basis, const FEContainer &fes, const std::shared_ptr< std::vector<bool>> &dirichFlags)
         : VectorFlatAssembler<Basis, FEContainer>(basis, fes, dirichFlags) {}
 
     /** Calculates the matrix quantity which is requested by fErequirements and returns a reference

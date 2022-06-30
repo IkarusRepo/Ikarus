@@ -5,20 +5,34 @@
 namespace Ikarus {
 
   template <typename Basis, typename FEContainer>
-  Eigen::VectorXd FlatAssemblerBase<Basis, FEContainer>::createFullVector(const Eigen::VectorXd &reducedVector) {
+  void FlatAssemblerBase<Basis, FEContainer>::createFullVector(const Eigen::VectorXd &reducedVector,Eigen::VectorXd &fullVector) {
     assert(reducedVector.size() == static_cast<Eigen::Index>(this->reducedSize())
            && "The reduced vector you passed has the wrong dimensions.");
     Eigen::Index reducedCounter = 0;
-    Eigen::VectorXd fullVec(this->size());
-    for (Eigen::Index i = 0; i < fullVec.size(); ++i) {
+    fullVector.resize(this->size());
+    for (Eigen::Index i = 0; i < fullVector.size(); ++i) {
       if (dirichletFlags->at(i)) {
         ++reducedCounter;
-        fullVec[i] = 0.0;
+        fullVector[i] = 0.0;
         continue;
       } else
-        fullVec[i] = reducedVector[i - reducedCounter];
+        fullVector[i] = reducedVector[i - reducedCounter];
     }
-    return fullVec;
+  }
+
+  template <typename Basis, typename FEContainer>
+  void FlatAssemblerBase<Basis, FEContainer>::createReducedVector(const Eigen::VectorXd &fullVector,Eigen::VectorXd &reducedVector) {
+    assert(fullVector.size() == static_cast<Eigen::Index>(this->size())
+           && "The full vector you passed has the wrong dimensions.");
+    Eigen::Index reducedCounter = 0;
+    reducedVector.resize(this->reducedSize());
+    for (Eigen::Index i = 0; i < fullVector.size(); ++i) {
+      if (dirichletFlags->at(i)) {
+        ++reducedCounter;
+        continue;
+      } else
+        reducedVector[i - reducedCounter] = fullVector[i];
+    }
   }
 
   template <typename Basis, typename FEContainer>

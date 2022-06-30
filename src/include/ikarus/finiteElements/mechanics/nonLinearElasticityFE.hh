@@ -45,9 +45,13 @@
 
 namespace Ikarus {
 
+
+
+
   template <typename Basis>
   class NonLinearElasticityFE : public DisplacementFE<Basis>,
                                 public Ikarus::AutoDiffFE<NonLinearElasticityFE<Basis>, Basis> {
+
   public:
     using BaseDisp = DisplacementFE<Basis>;  // Handles globalIndices function
     using BaseAD   = AutoDiffFE<NonLinearElasticityFE<Basis>, Basis>;
@@ -57,15 +61,20 @@ namespace Ikarus {
     using FERequirementType = FErequirements<Eigen::VectorXd>;
     using LocalView         = typename Basis::LocalView;
 
-    template <typename VolumeLoad>
-    NonLinearElasticityFE(Basis& globalBasis, const typename LocalView::Element& element, double emod, double nu,
-                          const VolumeLoad& p_volumeLoad)
+    using Traits = TraitsFromLocalView<LocalView>;
+    struct Settings{
+      double emod_;
+      double nu_;
+      std::function<Eigen::Vector<double, Traits::worlddim>(const Eigen::Vector<double, Traits::worlddim>&,
+                                                            const double&)>
+          volumeLoad;
+    };
+    NonLinearElasticityFE(Basis& globalBasis, const typename LocalView::Element& element,                const Settings& settings)
         : BaseDisp(globalBasis, element),
           BaseAD(globalBasis, element),
           localView_{globalBasis.localView()},
-          volumeLoad(p_volumeLoad),
-          emod_{emod},
-          nu_{nu} {
+          settings_(settings)
+    {
       localView_.bind(element);
       const int order = 2 * (localView_.tree().child(0).finiteElement().localBasis().order());
       localBasis      = Ikarus::LocalBasis(localView_.tree().child(0).finiteElement().localBasis());
@@ -73,7 +82,9 @@ namespace Ikarus {
                       bindDerivatives(0, 1));
     }
 
-    using Traits = TraitsFromLocalView<LocalView>;
+
+
+    const auto& settings() const {return settings_;}
 
   private:
     template <class ScalarType>
@@ -95,9 +106,9 @@ namespace Ikarus {
       Eigen::Matrix3<ScalarType> C;
       C.setZero();  // plane stress
       C(0, 0) = C(1, 1) = 1;
-      C(0, 1) = C(1, 0) = nu_;
-      C(2, 2)           = (1 - nu_) / 2;
-      C *= emod_ / (1 - nu_ * nu_);
+      C(0, 1) = C(1, 0) = settings().nu_;
+      C(2, 2)           = (1 - settings().nu_) / 2;
+      C *= settings().emod_ / (1 - settings().nu_ * settings().nu_);
       const auto geo = localView_.element().geometry();
       Ikarus::StandardLocalFunction uFunction(localBasis, disp);
       for (const auto& [gpIndex, gp] : uFunction.viewOverIntegrationPoints()) {
@@ -108,7 +119,7 @@ namespace Ikarus {
         const auto E      = (0.5 * (H.transpose() + H + H.transpose() * H)).eval();
         const auto EVoigt = toVoigt(E);
 
-        Eigen::Vector<double, Traits::worlddim> fext = volumeLoad(toEigenVector(gp.position()), lambda);
+        Eigen::Vector<double, Traits::worlddim> fext = settings().volumeLoad(toEigenVector(gp.position()), lambda);
         energy += (0.5 * EVoigt.dot(C * EVoigt) - u.dot(fext)) * geo.integrationElement(gp.position()) * gp.weight();
       }
       return energy;
@@ -118,11 +129,7 @@ namespace Ikarus {
     Ikarus::LocalBasis<
         std::remove_cvref_t<decltype(std::declval<LocalView>().tree().child(0).finiteElement().localBasis())>>
         localBasis;
-    std::function<Eigen::Vector<double, Traits::worlddim>(const Eigen::Vector<double, Traits::worlddim>&,
-                                                          const double&)>
-        volumeLoad;
-    double emod_;
-    double nu_;
+    Settings settings_;
   };
 
 }  // namespace Ikarus
