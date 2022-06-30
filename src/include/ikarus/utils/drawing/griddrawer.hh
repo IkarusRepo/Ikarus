@@ -16,7 +16,7 @@ void draw(const GridView& gridView) {
   auto f  = figure(true);
   auto ax = gca();
   hold(ax, true);
-  constexpr int edgeCodim = GridView::dimensionworld-1;
+  constexpr int edgeCodim = GridView::dimension-1;
     for (auto&& element : elements(gridView)) {
       std::array<std::array<double, 2>,GridView::dimensionworld> edgeCoords{};
       for (int edgeIndex = 0; edgeIndex < element.subEntities(edgeCodim); ++edgeIndex) {
@@ -27,20 +27,21 @@ void draw(const GridView& gridView) {
             edgeCoords[j][i] = vertCoords[j];
 
         }
+        if constexpr (GridView::dimensionworld==3 ) {
+          auto l = ax->plot3(edgeCoords[0], edgeCoords[1], edgeCoords[2], "-o");
+          l->line_width(2);
+          l->color("black");
+          l->marker_size(10);
+          l->marker_face_color("red");
+        } else {
+          auto l = ax->plot(edgeCoords[0], edgeCoords[1], "-o");
+          l->line_width(2);
+          l->color("black");
+          l->marker_size(10);
+          l->marker_face_color("red");
+        }
       }
-      if constexpr (GridView::dimensionworld==3 ) {
-        auto l = ax->plot3(edgeCoords[0], edgeCoords[1], edgeCoords[2], "-o");
-        l->line_width(2);
-        l->color("black");
-        l->marker_size(10);
-        l->marker_face_color("red");
-      } else {
-        auto l = ax->plot(edgeCoords[0], edgeCoords[1], "-o");
-        l->line_width(2);
-        l->color("black");
-        l->marker_size(10);
-        l->marker_face_color("red");
-      }
+
     }
 
 
