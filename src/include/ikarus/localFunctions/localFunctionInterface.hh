@@ -67,7 +67,7 @@ namespace Ikarus {
       assert(checkIfAllLeafNodeHaveTheSameBasisState(impl())
              && "The basis of the leaf nodes are not in the same state.");
       auto leafNodeCollection = collectLeafNodeLocalFunctions(impl());
-      auto node               = leafNodeCollection.node(Dune::index_constant<I>());
+      auto& node               = leafNodeCollection.node(Dune::index_constant<I>());
       return node.basis().viewOverIntegrationPoints();
     }
 
