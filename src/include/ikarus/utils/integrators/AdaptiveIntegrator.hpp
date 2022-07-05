@@ -42,11 +42,14 @@ namespace AdaptiveIntegrator {
 
   class IntegratorC {
     bool terminated{false};
+  public:
+    int evals{0};
 
   public:
-    void reset() { terminated = false; }
+    void reset() { terminated = false; evals=0; }
     template <class T, typename ScalarType>
     ScalarType adaptlobstp(T &&f, const double a, const double b, ScalarType fa, ScalarType fb, ScalarType is) {
+      ++evals;
       double m, h;
       m = (a + b) / 2.;
       h = (b - a) / 2.;
@@ -80,7 +83,10 @@ namespace AdaptiveIntegrator {
 
     template <class T>
     auto integrate(T &&f, const double a, const double b, const double tol_) {
+
       using ScalarType = decltype(f(a));
+      if(a==b)
+        return ScalarType{0};
 
       double tol, eps;
       eps = numeric_limits<double>::epsilon();

@@ -3,6 +3,7 @@
 //
 
 #include <config.h>
+#include <chrono>
 
 #include <autodiff/common/eigen.hpp>
 #include <autodiff/forward/dual.hpp>
@@ -54,7 +55,7 @@ auto magnetoStaticEnergy(F&& f, DF&& df, const double rho, const double R, const
       return (1/ahat * std::comp_ellint_1(sqrtb / ahat) - 1/denom * std::comp_ellint_1(sqrtb / denom))  * mzrhoPrime * rhoS ;
   };
   AdaptiveIntegrator::IntegratorC integrator;
-  return 2  * mzrho * rho * integrator.integrate(magnetoStaticEnergyF, 0, R, tol);
+  return 4  * mzrho * rho * integrator.integrate(magnetoStaticEnergyF, 0, rho, tol);
 }
 
 template <typename ScalarType>
@@ -105,18 +106,32 @@ auto energyIntegratorMag(F&& f, DF&& df, const double R, const double H, const d
 }
 
 int main(int argc, char** argv) {
+  std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
   Eigen::VectorXd radii(11);
   Eigen::Matrix<double,5,Eigen::Dynamic> results(5,radii.size()*radii.size());
-  radii<<0.5, 1, 2,3,4,5,6,7,7.5,8,10;
-  for (int i = 0; 1; ++i) {
-    for (int j = 0; j < 1; ++j) {
+//  radii<<0.5, 1, 2,3,4;
+  double oldEnergy=1;
+  double newEnergy=0;
+  int terms=0;
+  Eigen::VectorXd xdOld(1);
+  xdOld(0)=1;
+  while(Dune::FloatCmp::gt(std::abs(oldEnergy-newEnergy),1e-10)){
+    ++terms;
+//    for (int j = 0; j < 1; ++j) {
       const double R = 8;
       const double H = 0.5;
       std::cout << "R: " << R << " H: " << H << std::endl;
-      Eigen::VectorXd xd(10);
+      Eigen::VectorXd xd(terms);
+      std::cout<<xd.size()<<" "<<xdOld.size()<<std::endl;
+      if(terms>1) {
+        xd.setZero();
+        xd.head(terms - 1) = xdOld;
+      } else
+        xd.setOnes();
+      std::cout<<"Coeffs Begin: "<<xd<<std::endl;
 
-      for (int i = 0; i < xd.size(); ++i)
-        xd[i] = 1.0/(i*i*i + 0.5);
+//      for (int i = 0; i < xd.size(); ++i)
+//        xd[i] = 1.0/(i*i*i + 0.5);
       std::cout << std::setprecision(17) << std::endl;
 //    std::cout << "Starting coeffs: \n" << xd << std::endl;
 
@@ -150,12 +165,15 @@ int main(int argc, char** argv) {
 
       //  checkGradient(nonLinOpTest, {.draw = true, .writeSlopeStatement = true});
       //  checkHessian(nonLinOp, {.draw = false, .writeSlopeStatement = true});
-
+//      nonLinOp.update<0>();
+//      oldEnergy=nonLinOp.value();
       auto tr = Ikarus::makeTrustRegion(nonLinOp);
+
       tr->setup({.verbosity = 1, .grad_tol=1e-10, .corr_tol=1e-10, .Delta0 = 1});
       const auto solverInfo = tr->solve();
 
       std::cout << "Resulting coeffs: \n" << xd << std::endl;
+      xdOld=xd;
 
       //  std::cout << "First we approximate the integral of f(x) = x^2 on [0,2]" << std::endl;
       //  AdaptiveIntegrator::IntegratorC integrator;
@@ -163,16 +181,26 @@ int main(int argc, char** argv) {
       std::cout << "ExchangeEnergy: " << energyIntegratorEX(f, df, R, H, tol) << std::endl;
       std::cout << "MagnetoStaticEnergy: " << energyIntegratorMag(f, df, R, H, tol) << std::endl;
       nonLinOp.update<0>();
-      results(0, i*radii.size()+j) = R;
-      results(1, i*radii.size()+j) = H;
-      results(2, i*radii.size()+j) = nonLinOp.value();
-      results(3, i*radii.size()+j) = energyIntegratorEX(f, df, R, H, tol);
-      results(4, i*radii.size()+j) = energyIntegratorMag(f, df, R, H, tol);
-      auto mz = [&](auto x) { return cos(fourierAnsatz<double>(xd, x, R)); };
-      Ikarus::plot::drawFunction(mz, {0, R}, 100);
-    }
+      oldEnergy=newEnergy;
+      newEnergy=nonLinOp.value();
+      std::cout<<"oldEnergy: "<<oldEnergy<<std::endl;
+      std::cout<<"newEnergy: "<<newEnergy<<std::endl;
+      std::cout<<"diff: "<<oldEnergy-newEnergy<<std::endl;
+//      results(0, i*radii.size()+j) = R;
+//      results(1, i*radii.size()+j) = H;
+//      results(2, i*radii.size()+j) = nonLinOp.value();
+//      results(3, i*radii.size()+j) = energyIntegratorEX(f, df, R, H, tol);
+//      results(4, i*radii.size()+j) = energyIntegratorMag(f, df, R, H, tol);
+//      auto mz = [&](auto x) { return cos(fourierAnsatz<double>(xd, x, R)); };
+//      Ikarus::plot::drawFunction(mz, {0, R}, 100);
+//    }
+      std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+      std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
+      std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::nanoseconds> (end - begin).count() << "[ns]" << std::endl;
+      std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::seconds> (end - begin).count() << "[s]" << std::endl;
+//      std::cout<<results.transpose()<<std::endl;
   }
-  std::cout<<results.transpose()<<std::endl;
+
   //  integrator.reset();
   //  std::cout<<"IntVal: "<<integrator.integrate(f, 0, R, 1e-8)<<std::endl;
   //  integrator.reset();
