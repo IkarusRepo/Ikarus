@@ -3,18 +3,20 @@
 ## 3D Simulations
 
 [GridParameters]
-refinement = 0
+refinement = 3
 #mshfilepath = /mshfiles/magnetSphere_3Sphere_h0.5_0.5R_zyl.msh
 mshfilepath = /mshfiles/magnetSphere_3Sphere_h0.5_2R_zyl/magnetSphere_3Sphere_h0.5_2R_zyl.msh
 #mshfilepath = /mshfiles/magnetSphere_3Sphere_h0.5_4R_zyl/magnetSphere_3Sphere_h0.5_4R_zyl.msh
 #mshfilepath = /mshfiles/magnetSphere_3Sphere_h0.5_8R_zyl/magnetSphere_3Sphere_h0.5_8R_zyl.msh
+#mshfilepath = /mshfiles/magnetSphere_3Sphere_h2_8R_zyl/magnetSphere_3Sphere_h2_8R_zyl.msh
 #mshfilepath = /mshfiles/magnetSphere_3Sphere_h1e-2_2R_zyl/magnetSphere_3Sphere_h1e-2_2R_zyl.msh
-innerRadius = 0.5 # 2.8284271247461903 # 4.242640687119286
+innerRadius = 2 # 2.8284271247461903 # 4.242640687119286
 #innerDomainPredicate = "not (x[0]*x[0] + x[1]*x[1] - 1e-4 > 0.5*0.5 or abs(x[2]) >0.5)"
 #innerDomainPredicate = "not (x[0]*x[0] + x[1]*x[1] - 1e-4 > 0.5*0.5 or abs(x[2]) >0.25)"
 innerDomainPredicate = "not (x[0]*x[0] + x[1]*x[1] - 1e-4 > 2*2 or abs(x[2]) >0.25)"
 #innerDomainPredicate = "not (x[0]*x[0] + x[1]*x[1] - 1e-4 > 4*4 or abs(x[2]) >0.25)"
 #innerDomainPredicate = "not (x[0]*x[0] + x[1]*x[1] - 1e-4 > 8*8 or abs(x[2]) >0.25)"
+#innerDomainPredicate = "not (x[0]*x[0] + x[1]*x[1] - 1e-4 > 8*8 or abs(x[2]) >1)"
 #innerDomainPredicate = "not (x[0]*x[0] + x[1]*x[1] - 1e-4 > 2*2 or abs(x[2]) >1e-2/2)"
 
 [ControlParameters]

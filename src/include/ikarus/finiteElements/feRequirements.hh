@@ -19,7 +19,11 @@ namespace Ikarus {
   enum class ScalarAffordances {
     noAffordance,
     mechanicalPotentialEnergy,
-    microMagneticPotentialEnergy
+    microMagneticPotentialEnergy,
+    microMagneticExchangeEnergy,
+    microMagneticTotalMagnetoStaticEnergy,
+    microMagneticInsideMagnetoStaticEnergy,
+    microMagneticInsideFromMTimesHMagnetoStaticEnergy
   };
 
   enum class VectorAffordances {
@@ -75,8 +79,8 @@ namespace Ikarus {
 
   template <typename Type>
   concept FEAffordance
-      = std::is_same_v<Type, ScalarAffordances> or std::is_same_v<Type, VectorAffordances> or std::is_same_v<
-          Type, MatrixAffordances> or std::is_same_v<AffordanceCollection, MatrixAffordances>;
+      = std::is_same_v<std::remove_cvref_t<Type>, ScalarAffordances> or std::is_same_v<std::remove_cvref_t<Type>, VectorAffordances> or std::is_same_v<
+      std::remove_cvref_t<Type>, MatrixAffordances> or std::is_same_v<AffordanceCollection, MatrixAffordances>;
 
   inline constexpr VectorAffordances forces = VectorAffordances::forces;
 

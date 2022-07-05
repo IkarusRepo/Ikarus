@@ -13,21 +13,22 @@
 
 
 SetFactory("OpenCASCADE");
-hv = 1.0;
-Sphere(1) = {0.0,0.0,hv/2, 3.0, -Pi/2, Pi/2, 2*Pi};
+Zylinderheight = 2;
+Zylinderadius = 8;
+Sphere(1) = {0.0,0.0,0.0, 6.0*Zylinderadius, -Pi/2, Pi/2, 2*Pi};
 
-Disk(2) = {0, 0, 0, 0.5, 0.5};
+Disk(2) = {0, 0, -Zylinderheight/2, Zylinderadius, Zylinderadius};
 
 
 
-Printf("%f",hv);
-zyl[] = Extrude {0, 0, hv} {
+Printf("%f",Zylinderheight);
+zyl[] = Extrude {0, 0, Zylinderheight} {
   Surface{2};
 };
 
 //+
-MeshSize {3, 4} = 0.1;
-MeshSize {1, 2} = 1;
+MeshSize {3, 4} = 2*Zylinderheight/5;
+MeshSize {1, 2} = 2*Zylinderadius;
 
 
 //Surface{2} In Volume{1};

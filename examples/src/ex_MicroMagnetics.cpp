@@ -90,29 +90,8 @@ int main(int argc, char **argv) {
   //  const double freeSpaceX        = 10*a;
   //  const double freeSpaceY        = 5*a;
 
-  //  auto isInsidePredicate = [&](auto&& coord) {
-  //    if (coord[0] > freeSpaceX / 2 + sizedom1 / 2 + 1e-8 or coord[0] < freeSpaceX / 2 - sizedom1 / 2 - 1e-8)
-  //      return false;
-  //    else if (coord[1] > freeSpaceY / 2 + sizedom2 / 2 + 1e-8 or coord[1] < freeSpaceY / 2 - sizedom2 / 2 - 1e-8)
-  //      return false;
-  //    else
-  //      return true;
-  //  };
-
-  //  auto isInsidePredicate = [&](auto&& coord) {
-  //    if (Dune::power(coord[0],2)+ Dune::power(coord[1],2)-1e-8> Dune::power(0.5,2))
-  //      return false;
-  //    else
-  //      return true;
-  //  };
 
   std::cout << "InnerRadius is " << innerRadius << std::endl;
-  //  auto isInsidePredicate = [&](auto&& coord) {
-  //    if (Dune::power(coord[0], 2) + Dune::power(coord[1], 2) - 1e-4 > Dune::power(innerRadius, 2))
-  //      return false;
-  //    else
-  //      return true;
-  //  };
 
   //  using Grid        = Dune::YaspGrid<gridDim>;
   //  const size_t elex = 60;
@@ -135,8 +114,24 @@ int main(int argc, char **argv) {
   using Grid = Dune::ALUGrid<gridDim, gridDim, Dune::simplex, Dune::conforming>;
   auto grid  = Dune::GmshReader<Grid>::read(mshfilepath, false, false);
 
-  grid->globalRefine(refinement);
+
+
   auto gridView = grid->leafGridView();
+
+
+//  for (int i = 0; i < refinement; ++i) {
+//    for (auto &element: elements(gridView)) {
+//      auto geoCoord = element.geometry().center();
+//      if (geoCoord.two_norm()<2.5 )
+//        grid->mark(1, element);
+//    }
+//    grid->preAdapt();
+//    grid->adapt();
+//    grid->postAdapt();
+//  }
+
+  grid->globalRefine(refinement);
+  gridView = grid->leafGridView();
 
   //  draw(gridView);
   spdlog::info("The exchange length is {}.", lx);
@@ -150,8 +145,6 @@ int main(int argc, char **argv) {
                                       power<vectorPotDim>(lagrange<vectorPotOrder>(), BlockedInterleaved()),
                                       BlockedLexicographic{}));
 
-  //  auto basisRie = makeBasis(gridView, power<directorCorrectionDim>(lagrange<magnetizationOrder>(),
-  //  FlatInterleaved()));
   auto basisRieC = makeBasis(
       gridView, composite(power<directorCorrectionDim>(lagrange<magnetizationOrder>(), FlatInterleaved()),
                           power<vectorPotDim>(lagrange<vectorPotOrder>(), FlatInterleaved()), FlatLexicographic{}));
@@ -185,8 +178,7 @@ int main(int argc, char **argv) {
   DirectorVector mBlocked(basisEmbeddedC.size({Dune::Indices::_0}));
   for (auto &msingle : mBlocked) {
     if constexpr (directorDim == 3)
-      msingle.setValue(0.1 * Eigen::Vector<double, directorDim>::Random()
-                       + Eigen::Vector<double, directorDim>::UnitZ());
+      msingle.setValue( Eigen::Vector<double, directorDim>::UnitX());
     else
       msingle.setValue(0.1 * Eigen::Vector<double, directorDim>::Random()
                        + Eigen::Vector<double, directorDim>::UnitX());
@@ -200,7 +192,6 @@ int main(int argc, char **argv) {
   MultiTypeVector mAndABlocked(mBlocked, aBlocked);
 
   std::vector<bool> dirichletFlags(basisRieC.size(), false);
-  std::cout << "dirichletFlags.size()" << dirichletFlags.size() << std::endl;
   // Fix vector potential on the whole boundary
   Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basisRieC, Dune::Indices::_1),
                                       [&](auto &&globalIndex) { dirichletFlags[globalIndex[0]] = true; });
@@ -228,10 +219,10 @@ int main(int argc, char **argv) {
           isIntersectionInside = false;
       }
 
-      if (!isIntersectionInside) {
+//      if (!isIntersectionInside) {
         for (auto localIndex : seDOFs.bind(localView, intersection))
           dirichletFlags[localView.index(localIndex)[0]] = true;
-      }
+//      }
     }
   }
 
@@ -295,13 +286,16 @@ int main(int argc, char **argv) {
 
   auto nonLinOp = Ikarus::NonLinearOperator(linearAlgebraFunctions(energyFunction, residualFunction, hessianFunction),
                                             parameter(mAndABlocked, lambda));
+
+  const auto& K = nonLinOp.secondDerivative();
+  std::cout<<"Percentage of non-zeros in matrix is: "<<static_cast<double>(K.nonZeros())/static_cast<double>(Dune::power(K.rows,2))<<std::endl;
   auto updateFunction = std::function([&](MultiTypeVector &multiTypeVector, const Eigen::VectorXd &d) {
     auto dFull = denseAssembler.createFullVector(d);
     multiTypeVector += dFull;
   });
 
-  checkGradient(nonLinOp, {.draw = true, .writeSlopeStatement = true}, updateFunction);
-  checkHessian(nonLinOp, {.draw = true, .writeSlopeStatement = true}, updateFunction);
+//  checkGradient(nonLinOp, {.draw = false, .writeSlopeStatement = true}, updateFunction);
+//  checkHessian(nonLinOp, {.draw = false, .writeSlopeStatement = true}, updateFunction);
 
   auto nr = Ikarus::makeTrustRegion(nonLinOp, updateFunction);
   //  auto nr = Ikarus::makeTrustRegion< decltype(nonLinOp),PreConditioner::DiagonalPreconditioner>(nonLinOp,
@@ -391,4 +385,26 @@ int main(int argc, char **argv) {
   const double volume = std::numbers::pi * Dune::power(innerRadius, 2);
   spdlog::info("Energy: {}, Volume: {}, Energy/(0.5*V): {}", nonLinOp.value(), volume,
                nonLinOp.value() / (0.5 * volume));
+
+
+  auto energyFunctionNew = [&](auto &&disp, auto &&lambdaLocal,auto&& req) -> auto {
+    Ikarus::FErequirements reqs = FErequirementsBuilder<MultiTypeVector>()
+        .insertGlobalSolution(Ikarus::FESolutions::magnetizationAndVectorPotential, disp)
+        .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
+        .addAffordance(std::move(req))
+        .build();
+
+    return denseAssembler.getScalar(reqs);
+  };
+
+
+  std::cout<<"Total Energy: "<< energyFunctionNew(mAndABlocked,lambda,Ikarus::ScalarAffordances::microMagneticPotentialEnergy)<<std::endl;
+  std::cout<<"Total Energy: "<< energyFunction(mAndABlocked,lambda)<<std::endl;
+  std::cout<<"Total EnergyFromNonOp: "<< nonLinOp.value()<<std::endl;
+  std::cout<<"Exchange Energy: "<< energyFunctionNew(mAndABlocked,lambda,Ikarus::ScalarAffordances::microMagneticExchangeEnergy)<<std::endl;
+  std::cout<<"Total MagnetoStatic Energy: "<< energyFunctionNew(mAndABlocked,lambda,Ikarus::ScalarAffordances::microMagneticTotalMagnetoStaticEnergy)<<std::endl;
+  std::cout<<"Inside MagnetoStatic Energy: "<< energyFunctionNew(mAndABlocked,lambda,Ikarus::ScalarAffordances::microMagneticInsideMagnetoStaticEnergy)<<std::endl;
+  std::cout<<"Inside HtimesM MagnetoStatic Energy: "<< energyFunctionNew(mAndABlocked,lambda,Ikarus::ScalarAffordances::microMagneticInsideFromMTimesHMagnetoStaticEnergy)<<std::endl;
+
+
 }
