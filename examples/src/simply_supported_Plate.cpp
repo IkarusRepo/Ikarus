@@ -24,6 +24,7 @@
 
 #include <dune/functions/functionspacebases/boundarydofs.hh>
 #include <dune/functions/functionspacebases/subspacebasis.hh>
+#include <dune/functions/functionspacebases/powerbasis.hh>
 #include <dune/functions/functionspacebases/interpolate.hh>
 #include <dune/iga/igaalgorithms.hh>
 #include <dune/iga/nurbsgrid.hh>
@@ -79,6 +80,7 @@ int main() {
   using namespace Dune::Functions::BasisFactory;
   /// Create nurbs basis with extracted preBase from grid
   auto basis = makeBasis(gridView, gridView.getPreBasis());
+//  auto basis = makeBasis(gridView, power<1>(gridView.getPreBasis(), FlatInterleaved()));
   /// Fix complete boundary (simply supported plate)
   std::vector<bool> dirichletFlags(basis.size(), false);
   Dune::Functions::forEachBoundaryDOF(basis, [&](auto&& index) { dirichletFlags[index] = true; });
@@ -95,12 +97,16 @@ int main() {
   const double Emod      = 1000;
   const double nu        = 0.3;
   const double thickness = 0.1;
+  std::vector<KirchhoffPlateAD<decltype(basis)>> fesAD;
   std::vector<KirchhoffPlate<decltype(basis)>> fes;
-  for (auto& ele : elements(gridView))
-    fes.emplace_back(basis, ele, Emod, nu, thickness);
+  for (auto& ele : elements(gridView)) {
+    fesAD.emplace_back(basis, ele, Emod, nu, thickness);
+    fes.emplace_back(basis , ele , Emod, nu, thickness);
+  }
 
   /// Create assembler
-  auto denseAssembler = DenseFlatAssembler(basis, fes, dirichletFlags);
+  auto denseAssemblerAD = DenseFlatAssembler(basis, fesAD, dirichletFlags);
+//  auto denseAssembler = DenseFlatAssembler(basis, fes, dirichletFlags);
 
   /// Create non-linear operator with potential energy
   Eigen::VectorXd w;
@@ -108,29 +114,51 @@ int main() {
 
   const double qz = 1.0*thickness*thickness*thickness;
 
-  auto kFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
+  auto kFunctionAD = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
     Ikarus::FErequirements req = FErequirementsBuilder()
                                      .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
                                      .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
                                      .addAffordance(Ikarus::MatrixAffordances::stiffness)
                                      .build();
-    return denseAssembler.getMatrix(req);
+    return denseAssemblerAD.getMatrix(req);
   };
 
-  auto rFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
+  auto rFunctionAD = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
     Ikarus::FErequirements req = FErequirementsBuilder()
                                      .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
                                      .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
                                      .addAffordance(Ikarus::VectorAffordances::forces)
                                      .build();
-    return denseAssembler.getVector(req);
+    return denseAssemblerAD.getVector(req);
   };
 
-  const auto& K = kFunction(w, qz);
-  const auto& R = rFunction(w, qz);
+//  auto kFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
+//    Ikarus::FErequirements req = FErequirementsBuilder()
+//                                     .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
+//                                     .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
+//                                     .addAffordance(Ikarus::MatrixAffordances::stiffness)
+//                                     .build();
+//    return denseAssembler.getMatrix(req);
+//  };
+
+//  auto rFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
+//    Ikarus::FErequirements req = FErequirementsBuilder()
+//                                     .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
+//                                     .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
+//                                     .addAffordance(Ikarus::VectorAffordances::forces)
+//                                     .build();
+//    return denseAssembler.getVector(req);
+//  };
+
+  const auto& KAD = kFunctionAD(w, qz);
+  const auto& RAD = rFunctionAD(w, qz);
+//  const auto& K = kFunction(w, qz);
+//  const auto& R = rFunction(w, qz);
+//  if(RAD.isApprox(R))
+//    std::cout<<std::endl<<"Coinciding external forces :)"<<std::endl<<std::endl;
   Eigen::LDLT<Eigen::MatrixXd> solver;
-  solver.compute(K);
-  w -= solver.solve(R);
+  solver.compute(KAD);
+  w -= solver.solve(RAD);
 
   // Output solution to vtk
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
