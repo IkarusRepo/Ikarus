@@ -39,6 +39,7 @@
 #include <ikarus/utils/eigenDuneTransformations.hh>
 #include <ikarus/utils/observer/controlVTKWriter.hh>
 #include <ikarus/finiteElements/mechanics/kirchhoffPlate.hh>
+#include <ikarus/finiteElements/mechanics/ReissnerMindlinPlate.hh>
 
 // Reference: Echter, R., Oesterle, B., Bischoff, M., 2013. A hierarchic family of isogeometric shell finite elements.
 // Computer Methods in Applied Mechanics and Engineering 254, 170–180. https://doi.org/10.1016/j.cma.2012.10.018
@@ -97,16 +98,14 @@ int main() {
   const double Emod      = 1000;
   const double nu        = 0.3;
   const double thickness = 0.1;
-  std::vector<KirchhoffPlateAD<decltype(basis)>> fesAD;
+
   std::vector<KirchhoffPlate<decltype(basis)>> fes;
   for (auto& ele : elements(gridView)) {
-    fesAD.emplace_back(basis, ele, Emod, nu, thickness);
     fes.emplace_back(basis , ele , Emod, nu, thickness);
   }
 
   /// Create assembler
-  auto denseAssemblerAD = DenseFlatAssembler(basis, fesAD, dirichletFlags);
-//  auto denseAssembler = DenseFlatAssembler(basis, fes, dirichletFlags);
+  auto denseAssembler = DenseFlatAssembler(basis, fes, dirichletFlags);
 
   /// Create non-linear operator with potential energy
   Eigen::VectorXd w;
@@ -114,51 +113,30 @@ int main() {
 
   const double qz = 1.0*thickness*thickness*thickness;
 
-  auto kFunctionAD = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
+  auto kFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
     Ikarus::FErequirements req = FErequirementsBuilder()
                                      .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
                                      .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
                                      .addAffordance(Ikarus::MatrixAffordances::stiffness)
                                      .build();
-    return denseAssemblerAD.getMatrix(req);
+    return denseAssembler.getMatrix(req);
   };
 
-  auto rFunctionAD = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
+  auto rFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
     Ikarus::FErequirements req = FErequirementsBuilder()
                                      .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
                                      .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
                                      .addAffordance(Ikarus::VectorAffordances::forces)
                                      .build();
-    return denseAssemblerAD.getVector(req);
+    return denseAssembler.getVector(req);
   };
 
-//  auto kFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
-//    Ikarus::FErequirements req = FErequirementsBuilder()
-//                                     .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
-//                                     .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
-//                                     .addAffordance(Ikarus::MatrixAffordances::stiffness)
-//                                     .build();
-//    return denseAssembler.getMatrix(req);
-//  };
+  const auto& K = kFunction(w, qz);
+  const auto& R = rFunction(w, qz);
 
-//  auto rFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
-//    Ikarus::FErequirements req = FErequirementsBuilder()
-//                                     .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
-//                                     .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
-//                                     .addAffordance(Ikarus::VectorAffordances::forces)
-//                                     .build();
-//    return denseAssembler.getVector(req);
-//  };
-
-  const auto& KAD = kFunctionAD(w, qz);
-  const auto& RAD = rFunctionAD(w, qz);
-//  const auto& K = kFunction(w, qz);
-//  const auto& R = rFunction(w, qz);
-//  if(RAD.isApprox(R))
-//    std::cout<<std::endl<<"Coinciding external forces :)"<<std::endl<<std::endl;
   Eigen::LDLT<Eigen::MatrixXd> solver;
-  solver.compute(KAD);
-  w -= solver.solve(RAD);
+  solver.compute(K);
+  w -= solver.solve(R);
 
   // Output solution to vtk
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
@@ -193,4 +171,38 @@ int main() {
   std::cout<<std::endl<<"w_max_ana: " << w_max_ana << std::endl<<"w_fe     : " << w_fe << std::endl;
   std::cout<<"The error is:"<<sqrt(Dune::power((w_max_ana-w_fe),2))<<std::endl;
   std::cout<<"#################################################";
+
+//  ############################################
+//  ###### With Automatic Differentiation ######
+//  ############################################
+//  std::vector<KirchhoffPlateAD<decltype(basis)>> fesAD;
+//  for (auto& ele : elements(gridView)) {
+//    fesAD.emplace_back(basis, ele, Emod, nu, thickness);
+//  }
+//  auto denseAssemblerAD = DenseFlatAssembler(basis, fesAD, dirichletFlags);
+//  auto kFunctionAD = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
+//         Ikarus::FErequirements req = FErequirementsBuilder()
+//                                          .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
+//                                          .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
+//                                          .addAffordance(Ikarus::MatrixAffordances::stiffness)
+//                                          .build();
+//         return denseAssemblerAD.getMatrix(req);
+//  };
+//
+//  auto rFunctionAD = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
+//    Ikarus::FErequirements req = FErequirementsBuilder()
+//                                     .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
+//                                     .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
+//                                     .addAffordance(Ikarus::VectorAffordances::forces)
+//                                     .build();
+//    return denseAssemblerAD.getVector(req);
+//  };
+//  const auto& KAD = kFunctionAD(w, qz);
+//  const auto& RAD = rFunctionAD(w, qz);
+//  if(RAD.isApprox(R))
+//    std::cout<<std::endl<<"Coinciding external forces :)"<<std::endl<<std::endl;
+//
+//  if(KAD.isApprox(K))
+//    std::cout<<std::endl<<"Coinciding stiffness :)"<<std::endl<<std::endl;
+
 }

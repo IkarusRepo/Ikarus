@@ -25,14 +25,15 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
-#include <ikarus/localFunctions/impl/standardLocalFunction.hh>
 #include <ikarus/assembler/simpleAssemblers.hh>
 #include <ikarus/controlRoutines/loadControl.hh>
 #include <ikarus/finiteElements/feBases/autodiffFE.hh>
 #include <ikarus/finiteElements/feBases/scalarFE.hh>
-#include <ikarus/finiteElements/mechanics/displacementFE.hh>
+#include <ikarus/finiteElements/mechanics/KPTFE.hh>
 #include <ikarus/linearAlgebra/nonLinearOperator.hh>
 #include <ikarus/localBasis/localBasis.hh>
+#include <ikarus/localFunctions/impl/standardLocalFunction.hh>
+#include <ikarus/manifolds/realTuple.hh>
 #include <ikarus/solver/nonLinearSolver/newtonRaphson.hh>
 #include <ikarus/utils/algorithms.hh>
 #include <ikarus/utils/concepts.hh>
@@ -45,10 +46,10 @@
 namespace Ikarus {
 
   template <typename Basis>
-  class ReissnerMindlinPlate : public DisplacementFE<Basis>{
+  class ReissnerMindlinPlate : public KPTFE<Basis>{
   public:
-    using BaseDisp = DisplacementFE<Basis>;  // Handles globalIndices function
-    using GlobalIndex = typename DisplacementFE<Basis>::GlobalIndex;
+    using BaseDisp = KPTFE<Basis>;  // Handles globalIndices function
+    using GlobalIndex = typename KPTFE<Basis>::GlobalIndex;
     using FERequirementType = FErequirements<Eigen::VectorXd>;
     using LocalView         = typename Basis::LocalView;
     using GridView         = typename Basis::GridView;
@@ -167,23 +168,23 @@ namespace Ikarus {
       using namespace DerivativeDirections;
       auto& ele           = localView_.element();
       auto& fe            = localView_.tree().finiteElement();
-      Eigen::VectorX<double> wNodal;
-      wNodal.setZero(fe.size());
-      for (auto i = 0U; i < fe.size(); ++i)
-        wNodal(i) = wGlobal[localView_.index(localView_.tree().localIndex(i))[0]];
 
       const auto& localBasis = fe.localBasis();
       const auto geo = localView_.element().geometry();
       const auto& rule = Dune::QuadratureRules<double, 2>::rule(ele.type(), 2 * localBasis.order());
-      Ikarus::StandardLocalFunction uFunction(localBasis_, wNodal);
 
-      for (const auto& [gpIndex, gp] : uFunction.viewOverIntegrationPoints()) {
-        const auto u    = uFunction.evaluateFunction(gpIndex);
+      g.template setZero(localView_.size());
+      for (const auto& gp : rule){
         const auto Jinv = Ikarus::toEigenMatrix(geo.jacobianInverseTransposed(gp.position())).transpose().eval();
-        for (size_t i=0 ; i<fe.size() ; ++i) {
-          const auto udCi =uFunction.evaluateDerivative(gpIndex, wrt(coeff(i))); //Returns shape functions du/dD=N with u=ND
-          g.template segment<Traits::mydim>(Traits::mydim*i) -= udCi*lambda* geo.integrationElement(gp.position()) * gp.weight();
-        }
+        const double intElement = geo.integrationElement(gp.position()) * gp.weight();
+        std::vector<Dune::FieldVector<double,1>> shapeFunctionValues;
+        localBasis.evaluateFunction(gp.position(), shapeFunctionValues);
+        Eigen::VectorXd N;
+        N.setZero(localView_.size());
+        for(size_t nn=0; nn<localView_.size(); ++nn)
+          N[nn] = shapeFunctionValues[nn];
+        for(size_t kk=0; kk<localView_.size(); ++kk)
+          g[kk] -= N[kk] * lambda * intElement;
       }
     }
 
@@ -194,40 +195,42 @@ namespace Ikarus {
       using namespace DerivativeDirections;
       auto& ele           = localView_.element();
       auto& fe            = localView_.tree().finiteElement();
-      Eigen::VectorX<double> wNodal;
-      wNodal.setZero(fe.size());
-      for (auto i = 0U; i < fe.size(); ++i)
-        wNodal(i) = wGlobal[localView_.index(localView_.tree().localIndex(i))[0]];
 
       const auto& localBasis = fe.localBasis();
       const auto geo = localView_.element().geometry();
       const auto& rule = Dune::QuadratureRules<double, 2>::rule(ele.type(), 2 * localBasis.order());
-      Ikarus::StandardLocalFunction uFunction(localBasis_, wNodal);
+      h.template setZero(localView_.size(),localView_.size());
 
-      for (const auto& [gpIndex, gp] : uFunction.viewOverIntegrationPoints()) {
-        const auto u    = uFunction.evaluateFunction(gpIndex);
+      for (const auto& gp : rule){
         const auto Jinv = Ikarus::toEigenMatrix(geo.jacobianInverseTransposed(gp.position())).transpose().eval();
         const double intElement = geo.integrationElement(gp.position()) * gp.weight();
-        for (size_t i=0 ; i<fe.size() ; ++i) {
-          const auto dHdCi = uFunction.evaluateDerivative(gpIndex, wrt(spatialAll,coeff(i)), transformWith(Jinv));
-          const auto ddHddCi = dHdCi.evaluateDerivative(gpIndex, wrt(spatialAll,coeff(i)), transformWith(Jinv));
-          Eigen::Matrix<double,3,1> bopI;
-          bopI.row(0)<< ddHddCi[0].diagonal()(0);
-          bopI.row(1)<< ddHddCi[0].diagonal()(1);
-          bopI.row(2)<< 2.0*ddHddCi[0].diagonal()(2);
-          for (size_t j = 0; j < fe.size(); ++j) {
-            const auto dHdCj = uFunction.evaluateDerivative(gpIndex, wrt(spatialAll,coeff(j)), transformWith(Jinv));
-            const auto ddHddCj = dHdCj.evaluateDerivative(gpIndex, wrt(spatialAll,coeff(j)), transformWith(Jinv));
-            Eigen::Matrix<double,3,1> bopJ;
-            bopJ.row(0)<< ddHddCj[0].diagonal()(0);
-            bopJ.row(1)<< ddHddCj[0].diagonal()(1);
-            bopJ.row(2)<< 2.0*ddHddCj[0].diagonal()(2);
-            h.template block<1, 1>(i*Traits::mydim,j*Traits::mydim)+= bopI.transpose()*D*bopJ*intElement;
-          }
+        std::vector<Dune::FieldVector<double, 1>> dN_xixi;
+        std::vector<Dune::FieldVector<double, 1>> dN_xieta;
+        std::vector<Dune::FieldVector<double, 1>> dN_etaeta;
+
+        localBasis.partial({2, 0}, gp.position(), dN_xixi);
+        localBasis.partial({1, 1}, gp.position(), dN_xieta);
+        localBasis.partial({0, 2}, gp.position(), dN_etaeta);
+
+        Eigen::VectorXd dN_xx(localView_.size());
+        Eigen::VectorXd dN_yy(localView_.size());
+        Eigen::VectorXd dN_xy(localView_.size());
+        using Dune::power;
+        for (auto i = 0U; i < localView_.size(); ++i) {
+          dN_xx[i] = dN_xixi[i] * power(Jinv(0, 0), 2) + dN_etaeta[i] * power(Jinv(0, 1), 2);
+          dN_yy[i] = dN_xixi[i] * power(Jinv(1, 0), 2) + dN_etaeta[i] * power(Jinv(1, 1), 2);
+          dN_xy[i] = 2 * dN_xieta[i] * Jinv(0, 0) * Jinv(1, 1);
         }
+        Eigen::MatrixXd bop;
+        bop.setZero(3,localView_.size());
+        for (auto i = 0U; i < localView_.size(); ++i) {
+          bop(0,i) = dN_xx(i);
+          bop(1,i) = dN_yy(i);
+          bop(2,i) = dN_xy(i);
+        }
+        h += bop.transpose() * D * bop * intElement;
       }
     }
-
 
     LocalView localView_;
     Ikarus::LocalBasis<std::remove_cvref_t<decltype(std::declval<LocalView>().tree().finiteElement().localBasis())>>
