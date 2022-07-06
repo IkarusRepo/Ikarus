@@ -31,31 +31,41 @@ auto exchangeEnergy(F&& f, DF&& df, double rho, double H) -> decltype(f(rho)) {
     return 2. * pi * H * ((pow(df(rho), 2) * rho * rho + pow(sin(f(rho)), 2)) / (2.0 * rho));
 }
 
+auto kernel(double rho, double rhoS, double delta)
+{
+  //std::comp_ellint_1 is defined for k and not for m= k^2 thus we have to insert the sqrt
+  double sqrtb                 = sqrt(4.0 * rho*rhoS);
+  const double ahat                  = rho + rhoS;
+  const double denom                = sqrt(4. * std::pow(delta,2) + std::pow(ahat,2));
+
+   double test  = std::comp_ellint_1(sqrtb / ahat);
+   double test2 = std::comp_ellint_1(sqrtb / denom);
+  if (std::isnan(test) or std::isnan(test2)) sqrtb -= 1e-15;  // circumvent std::comp_ellint_1(1)== infinity
+   test  = std::comp_ellint_1(sqrtb / ahat);
+   test2 = std::comp_ellint_1(sqrtb / denom);
+  if (std::isnan(test) or std::isnan(test2)) sqrtb -= 1e-15;  // circumvent std::comp_ellint_1(1)== infinity
+   test  = std::comp_ellint_1(sqrtb / ahat);
+   test2 = std::comp_ellint_1(sqrtb / denom);
+  if (std::isnan(test) or std::isnan(test2)) sqrtb -= 1e-15;  // circumvent std::comp_ellint_1(1)== infinity
+
+  if (Dune::FloatCmp::eq(rhoS, 0.) or Dune::FloatCmp::eq(rho, 0.)) // https://www.wolframalpha.com/input?i=limit%28%281%2F%28x%2By%29*K%284*x*y%2F%28x%2By%29%5E2%29-1%2Fsqrt%28%28x%2By%29%5E2%2B4*d%5E2%29*K%284*x*y%2F%284*d%5E2%2B%28x%2By%29%5E2%29%29%29*x*y%2C+as+x-%3E0%29
+    return 0.;
+  else
+    return 1/ahat * std::comp_ellint_1(sqrtb / ahat) - 1/denom * std::comp_ellint_1(sqrtb / denom);
+}
+
 template <typename F, typename DF>
 auto magnetoStaticEnergy(F&& f, DF&& df, const double rho, const double R, const double H, double tol)
     -> decltype(f(rho)) {
-  const decltype(f(rho)) mzrho = cos(f(rho));
 
   const double pi = std::numbers::pi;
   const double delta = H/2;
 
   auto magnetoStaticEnergyF = [&](auto rhoS) -> decltype(f(rho)) {
-    const decltype(f(rho)) mzrhoPrime = cos(f(rhoS));
-    //std::comp_ellint_1 is defined for k and not for m= k^2 thus we have to insert the sqrt
-    double sqrtb                 = sqrt(4.0 * rho*rhoS);
-    const double ahat                  = rho + rhoS;
-    const double denom                = sqrt(4. * std::pow(delta,2) + std::pow(ahat,2));
-
-    const double test  = std::comp_ellint_1(sqrtb / ahat);
-    const double test2 = std::comp_ellint_1(sqrtb / denom);
-    if (std::isnan(test) or std::isnan(test2)) sqrtb -= 1e-13;  // circumvent std::comp_ellint_1(1)== infinity
-    if (Dune::FloatCmp::eq(rhoS, 0.) or Dune::FloatCmp::eq(rho, 0.)) // https://www.wolframalpha.com/input?i=limit%28%281%2F%28x%2By%29*K%284*x*y%2F%28x%2By%29%5E2%29-1%2Fsqrt%28%28x%2By%29%5E2%2B4*d%5E2%29*K%284*x*y%2F%284*d%5E2%2B%28x%2By%29%5E2%29%29%29*x*y%2C+as+x-%3E0%29
-      return 0;
-    else
-      return (1/ahat * std::comp_ellint_1(sqrtb / ahat) - 1/denom * std::comp_ellint_1(sqrtb / denom))  * mzrhoPrime * rhoS ;
+    return kernel(rho,rhoS,delta)  * cos(f(rhoS)) * rhoS ;
   };
   AdaptiveIntegrator::IntegratorC integrator;
-  return 4  * mzrho * rho * integrator.integrate(magnetoStaticEnergyF, 0, rho, tol);
+  return 4  * cos(f(rho)) * rho * integrator.integrate(magnetoStaticEnergyF, 0, rho, tol);
 }
 
 template <typename ScalarType>
@@ -82,10 +92,39 @@ auto fourierAnsatzDerivative(const Eigen::VectorX<ScalarType>& d, double rho, do
   return res;
 }
 
+template <typename ScalarType>
+auto fourierAnsatzSecondDerivative(const Eigen::VectorX<ScalarType>& d, double rho, double R) {
+  ScalarType res = 0;
+
+  const double pi = std::numbers::pi;
+
+  for (int i = 0; i < d.size(); ++i)
+    res -= (Dune::power(2. * i + 1.,2) * Dune::power(pi,2) * sin(rho * (2. * i + 1.) * pi / (2.0 * R)) * d[i]) / (4.0 * Dune::power(R,2));
+
+  return res;
+}
+
 template <typename F, typename DF>
 auto energyIntegrator(F&& f, DF&& df, const double R, const double H, const double tol) {
   auto exE = [&](auto rho) -> decltype(f(rho)) {
     return exchangeEnergy(f, df, rho, H) + magnetoStaticEnergy(f, df, rho, R, H, tol);
+  };
+  AdaptiveIntegrator::IntegratorC integrator;
+  return integrator.integrate(exE, 0, R, tol);
+}
+
+
+template <typename F, typename DF, typename DDF>
+auto residualIntegrator(F&& f, DF&& df, DDF&& ddf, const double R, const double H, const double tol) {
+  const double pi = std::numbers::pi;
+  const double delta = H/2;
+  auto exE = [&](auto rho) -> decltype(f(rho)) {
+    auto mag =[&](auto rhoS) -> decltype(f(rho))
+    {
+      return cos(f(rhoS))*rhoS*kernel(rho,rhoS,delta);
+    };
+    AdaptiveIntegrator::IntegratorC integrator;
+    return abs(-8*sin(f(rho))*rho*integrator.integrate(mag,0,rho,tol)+2*pi*H*(sin(f(rho))*cos(f(rho))-df(rho)*rho-ddf(rho)*rho*rho));
   };
   AdaptiveIntegrator::IntegratorC integrator;
   return integrator.integrate(exE, 0, R, tol);
@@ -137,6 +176,7 @@ int main(int argc, char** argv) {
 
       auto f = [&](auto x) { return fourierAnsatz<double>(xd, x, R); };
       auto df = [&](auto x) { return fourierAnsatzDerivative<double>(xd, x, R); };
+      auto ddf = [&](auto x) { return fourierAnsatzSecondDerivative<double>(xd, x, R); };
 
       //  Ikarus::plot::drawFunction(f, {0,R}, 100);
       //  Ikarus::plot::drawFunction(df, {0,R}, 100);
@@ -172,6 +212,7 @@ int main(int argc, char** argv) {
       tr->setup({.verbosity = 1, .grad_tol=1e-10, .corr_tol=1e-10, .Delta0 = 1});
       const auto solverInfo = tr->solve();
 
+      std::cout << "Strong Error: \n" << residualIntegrator(f,df,ddf,R,H,tol) << std::endl;
       std::cout << "Resulting coeffs: \n" << xd << std::endl;
       xdOld=xd;
 
@@ -191,8 +232,26 @@ int main(int argc, char** argv) {
 //      results(2, i*radii.size()+j) = nonLinOp.value();
 //      results(3, i*radii.size()+j) = energyIntegratorEX(f, df, R, H, tol);
 //      results(4, i*radii.size()+j) = energyIntegratorMag(f, df, R, H, tol);
-//      auto mz = [&](auto x) { return cos(fourierAnsatz<double>(xd, x, R)); };
-//      Ikarus::plot::drawFunction(mz, {0, R}, 100);
+      auto mz = [&](auto x) { return cos(fourierAnsatz<double>(xd, x, R)); };
+      auto magE = [&](auto rho) -> decltype(f(rho)) { return magnetoStaticEnergy(f, df, rho, R, H, tol); };
+      auto exE = [&](auto rho) -> decltype(f(rho)) { return exchangeEnergy(f, df, rho, H); };
+  const double delta = H/2;
+      const double pi = std::numbers::pi;
+
+      auto RexE = [&](auto rho) -> decltype(f(rho)) {
+        auto mag =[&](auto rhoS) -> decltype(f(rho))
+        {
+          return cos(f(rhoS))*rhoS*kernel(rho,rhoS,delta);
+        };
+        AdaptiveIntegrator::IntegratorC integrator;
+        return abs(-8*sin(f(rho))*rho*integrator.integrate(mag,0,rho,tol)+2*pi*H*(sin(f(rho))*cos(f(rho))-df(rho)*rho-ddf(rho)*rho*rho));
+      };
+
+      std::cout<<"MzatR: "<<mz(R)<<std::endl;
+      Ikarus::plot::drawFunction(mz, {0, R}, 100);
+      Ikarus::plot::drawFunction(magE, {0, R}, 100);
+      Ikarus::plot::drawFunction(exE, {0, R}, 100);
+      Ikarus::plot::drawFunction(RexE, {0, R}, 100);
 //    }
       std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
       std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
