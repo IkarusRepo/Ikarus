@@ -31,13 +31,8 @@ namespace Ikarus {
         : localView{p_basis.localView()} {
       static_assert(Ikarus::Concepts::PowerBasis<RootBasis>,
                     "You didn't pass a localview of a power basis to this method");
-//      static_assert(RootBasis::PreBasis::Node::CHILDREN == worlddim,
-//                    "The power basis children number does not coincide with the world space where the grid entity is "
-//                    "embedded into!");
-//      static_assert(
-//          Ikarus::Concepts::FlatIndexBasis<RootBasis>,
-//          "The Index merging strategy of the basis you passed has to be FlatLexicographic or FlatInterLeaved");
-
+      static_assert(RootBasis::PreBasis::Node::CHILDREN == 0,
+                    "The power basis children number should be zero !!");
       localView.bind(element);
     }
 

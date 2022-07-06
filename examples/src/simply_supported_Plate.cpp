@@ -21,13 +21,16 @@
 // *
 
 #include <config.h>
-
+#include <vector>
 #include <dune/functions/functionspacebases/boundarydofs.hh>
 #include <dune/functions/functionspacebases/subspacebasis.hh>
 #include <dune/functions/functionspacebases/powerbasis.hh>
+#include <dune/functions/functionspacebases/compositebasis.hh>
 #include <dune/functions/functionspacebases/interpolate.hh>
+#include <dune/functions/functionspacebases/lagrangebasis.hh>
 #include <dune/iga/igaalgorithms.hh>
 #include <dune/iga/nurbsgrid.hh>
+#include <dune/grid/yaspgrid.hh>
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
@@ -41,20 +44,38 @@
 #include <ikarus/finiteElements/mechanics/kirchhoffPlate.hh>
 #include <ikarus/finiteElements/mechanics/ReissnerMindlinPlate.hh>
 
-// Reference: Echter, R., Oesterle, B., Bischoff, M., 2013. A hierarchic family of isogeometric shell finite elements.
+// References:
+// [1] Echter, R., Oesterle, B., Bischoff, M., 2013. A hierarchic family of isogeometric shell finite elements.
 // Computer Methods in Applied Mechanics and Engineering 254, 170–180. https://doi.org/10.1016/j.cma.2012.10.018
 // Section 5.1
 
+
+// Element types (eletype):
+// 0 = Kirchhoff Plate Element (w)
+// 1 = Reissner-Mindlin Plate Element (w, thetax, thetay)
+
+#define eletype 1
+
+using namespace Ikarus;
+using namespace Dune::Indices;
+
 int main() {
+
+  constexpr int griddim     = 2;
+  constexpr int dimworld    = 2;
+
+  const double L = 10.0;
+  const double Emod      = 1000;
+  const double nu        = 0.3;
+  const double thickness = 0.1;
+  const int refinement_level = 3;
+
+#if eletype == 0
   /// Create 2D nurbs grid
-  using namespace Ikarus;
-  constexpr int griddim                                    = 2;
-  constexpr int dimworld                                   = 2;
   const std::array<std::vector<double>, griddim> knotSpans = {{{0, 0, 1, 1}, {0, 0, 1, 1}}};
 
   using ControlPoint = Dune::IGA::NURBSPatchData<griddim, dimworld>::ControlPointType;
 
-  const double L = 10.0;
   const std::vector<std::vector<ControlPoint>> controlPoints
       = {{{.p = {0, 0}, .w = 1}, {.p = {0, L}, .w = 1}}, {{.p = {L, 0}, .w = 1}, {.p = {L, L}, .w = 1}}};
 
@@ -69,45 +90,79 @@ int main() {
   patchData.knotSpans     = knotSpans;
   patchData.degree        = {1, 1};
   patchData.controlPoints = controlNet;
+
   /// Increase polynomial degree in each direction
   patchData = Dune::IGA::degreeElevate(patchData, 0, 1);
   patchData = Dune::IGA::degreeElevate(patchData, 1, 1);
   Grid grid(patchData);
-
-  grid.globalRefine(3);
-
+  grid.globalRefine(refinement_level);
   auto gridView = grid.leafGridView();
-  //    draw(gridView);
   using namespace Dune::Functions::BasisFactory;
+
   /// Create nurbs basis with extracted preBase from grid
   auto basis = makeBasis(gridView, gridView.getPreBasis());
-//  auto basis = makeBasis(gridView, power<1>(gridView.getPreBasis(), FlatInterleaved()));
+
   /// Fix complete boundary (simply supported plate)
   std::vector<bool> dirichletFlags(basis.size(), false);
   Dune::Functions::forEachBoundaryDOF(basis, [&](auto&& index) { dirichletFlags[index] = true; });
 
-  std::cout<<"#################################################";
+  /// Create finite elements
+  std::vector<KirchhoffPlate<decltype(basis)>> fes;
+  for (auto& ele : elements(gridView)) {
+    fes.emplace_back(basis , ele , Emod, nu, thickness);
+  }
+
+  std::string output_file = "Simply_Supported_Kirchhoff_Plate";
+#endif
+
+#if eletype == 1
+  /// Creating YaspGrid
+  using Grid        = Dune::YaspGrid<griddim>;
+  const size_t elex = 2;
+
+  Dune::FieldVector<double, 2> bbox = {L, L};
+  std::array<int, 2> eles           = {elex, elex};
+  auto grid                         = std::make_shared<Grid>(bbox, eles);
+  grid->globalRefine(refinement_level);
+  auto gridView = grid->leafGridView();
+
+  using namespace Dune::Functions::BasisFactory;
+
+  /// Create nurbs basis with extracted preBase from grid
+  auto basis = makeBasis(gridView, power<3>(lagrange<1>(),FlatInterleaved()));
+//  auto basis = makeBasis(gridView, composite(lagrange<1>(),lagrange<1>(),lagrange<1>(),FlatInterleaved()));
+
+  /// Fix complete boundary (simply supported plate)
+  std::vector<bool> dirichletFlags(basis.size(), false);
+  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0), [&](auto&& index) { dirichletFlags[index] = true; });
+
+  // Function for distributed load
+  auto volumeLoad = [](auto& globalCoord, auto& lamb) {
+    Eigen::Vector<double, 3> fext;
+    fext.setZero();
+    fext[0] = lamb;
+    return fext;
+  };
+
+  /// Create finite elements
+  std::vector<ReissnerMindlinPlate<decltype(basis)>> fes;
+  for (auto& ele : elements(gridView)) {
+    fes.emplace_back(basis , ele , Emod, nu, thickness, volumeLoad);
+  }
+
+  std::string output_file = "Simply_Supported_Reissner_Mindlin_Plate";
+#endif
+
+  std::cout<<"#################################################"<<std::endl;
   std::cout << "This gridview contains: " << std::endl;
   std::cout << gridView.size(2) << " vertices" << std::endl;
   std::cout << gridView.size(1) << " edges" << std::endl;
   std::cout << gridView.size(0) << " elements" << std::endl;
   std::cout << basis.size() << " Dofs" << std::endl;
 
-  /// Create finite elements
-  auto localView         = basis.localView();
-  const double Emod      = 1000;
-  const double nu        = 0.3;
-  const double thickness = 0.1;
-
-  std::vector<KirchhoffPlate<decltype(basis)>> fes;
-  for (auto& ele : elements(gridView)) {
-    fes.emplace_back(basis , ele , Emod, nu, thickness);
-  }
-
   /// Create assembler
   auto denseAssembler = DenseFlatAssembler(basis, fes, dirichletFlags);
 
-  /// Create non-linear operator with potential energy
   Eigen::VectorXd w;
   w.setZero(basis.size());
 
@@ -142,7 +197,7 @@ int main() {
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
   Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(0));
   vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
-  vtkWriter.write("Simply_Supported_Kirchhoff_Plate");
+  vtkWriter.write(output_file);
 
   /// Create analytical solution function for the simply supported case
   const double pi         = std::numbers::pi;
@@ -153,28 +208,31 @@ int main() {
   auto wGlobalFunction = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 1>>(basis, w);
   auto localw          = localFunction(wGlobalFunction);
   double w_fe = 0.0;
-  const double Lmid = 5.0;
-  Eigen::Vector2d c_pos;
-  c_pos[0] = c_pos[1] = Lmid;
-
-  for (auto& ele : elements(gridView)) {
-    localView.bind(ele);
-    localw.bind(ele);
-    const auto geo   = localView.element().geometry();
-    if (((geo.corner(0)[0] <= Lmid) and (Lmid <= geo.corner(1)[0])) and ((geo.corner(0)[1] <= Lmid) and (Lmid <= geo.corner(2)[1])))
-    {
-        const auto local_pos = geo.local(toFieldVector(c_pos));
-        w_fe = localw(local_pos);
-    }
-  }
+  const double Lmid = L/2.0;
+//  Eigen::Vector2d c_pos;
+//  c_pos[0] = c_pos[1] = Lmid;
+//  auto localView = basis.localView();
+//
+//  for (auto& ele : elements(gridView)) {
+//    localView.bind(ele);
+//    localw.bind(ele);
+//    const auto geo   = localView.element().geometry();
+//    if (((geo.corner(0)[0] <= Lmid) and (Lmid <= geo.corner(1)[0])) and ((geo.corner(0)[1] <= Lmid) and (Lmid <= geo.corner(2)[1])))
+//    {
+//        const auto local_pos = geo.local(toFieldVector(c_pos));
+//        w_fe = localw(local_pos);
+//    }
+//  }
   std::cout<<"#################################################";
   std::cout<<std::endl<<"w_max_ana: " << w_max_ana << std::endl<<"w_fe     : " << w_fe << std::endl;
   std::cout<<"The error is:"<<sqrt(Dune::power((w_max_ana-w_fe),2))<<std::endl;
   std::cout<<"#################################################";
+}
 
-//  ############################################
-//  ###### With Automatic Differentiation ######
-//  ############################################
+
+//  ################################################################
+//  ###### With Automatic Differentiation for Kirchhoff Plate ######
+//  ################################################################
 //  std::vector<KirchhoffPlateAD<decltype(basis)>> fesAD;
 //  for (auto& ele : elements(gridView)) {
 //    fesAD.emplace_back(basis, ele, Emod, nu, thickness);
@@ -204,5 +262,3 @@ int main() {
 //
 //  if(KAD.isApprox(K))
 //    std::cout<<std::endl<<"Coinciding stiffness :)"<<std::endl<<std::endl;
-
-}

@@ -286,7 +286,6 @@ namespace Ikarus {
     }
 
     void calculateVector(const FERequirementType& par, typename Traits::VectorType& g) const {
-      const auto& wGlobal = par.getSolution(Ikarus::FESolutions::displacement);
       const auto& lambda  = par.getParameter(Ikarus::FEParameter::loadfactor);
       const auto D        = constitutiveMatrix(Emodul, nu, thickness);
       using namespace DerivativeDirections;
@@ -313,7 +312,6 @@ namespace Ikarus {
     }
 
     void calculateMatrix(const FERequirementType& par, typename Traits::MatrixType& h) const {
-      const auto& wGlobal = par.getSolution(Ikarus::FESolutions::displacement);
       const auto& lambda  = par.getParameter(Ikarus::FEParameter::loadfactor);
       const auto D        = constitutiveMatrix(Emodul, nu, thickness);
       using namespace DerivativeDirections;
