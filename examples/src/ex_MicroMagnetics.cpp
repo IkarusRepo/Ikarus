@@ -219,10 +219,10 @@ int main(int argc, char **argv) {
           isIntersectionInside = false;
       }
 
-//      if (!isIntersectionInside) {
+      if (!isIntersectionInside) {
         for (auto localIndex : seDOFs.bind(localView, intersection))
           dirichletFlags[localView.index(localIndex)[0]] = true;
-//      }
+      }
     }
   }
 
@@ -287,8 +287,8 @@ int main(int argc, char **argv) {
   auto nonLinOp = Ikarus::NonLinearOperator(linearAlgebraFunctions(energyFunction, residualFunction, hessianFunction),
                                             parameter(mAndABlocked, lambda));
 
-  const auto& K = nonLinOp.secondDerivative();
-  std::cout<<"Percentage of non-zeros in matrix is: "<<static_cast<double>(K.nonZeros())/static_cast<double>(Dune::power(K.rows,2))<<std::endl;
+  const auto& K_ = nonLinOp.secondDerivative();
+  std::cout<<"Percentage of non-zeros in matrix is: "<<static_cast<double>(K_.nonZeros())/static_cast<double>(Dune::power(K_.rows(),2))<<std::endl;
   auto updateFunction = std::function([&](MultiTypeVector &multiTypeVector, const Eigen::VectorXd &d) {
     auto dFull = denseAssembler.createFullVector(d);
     multiTypeVector += dFull;
