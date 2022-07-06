@@ -49,10 +49,10 @@ namespace Ikarus {
    [[nodiscard]] constexpr int size() const { return localView.size(); }
 
    void globalIndices(std::vector<GlobalIndex>& globalIndices) const {
-     const auto& fe = localView.tree().child(Dune::Indices::_0,0).finiteElement();
+     const auto& fe = localView.tree().child(0).finiteElement();
      for (size_t i = 0; i < fe.size(); ++i) {
        for (size_t j = 0; j < 3; ++j) {
-         globalIndices.push_back(localView.index((localView.tree().child(Dune::Indices::_0,j).localIndex(i))));
+         globalIndices.push_back(localView.index((localView.tree().child(j).localIndex(i))));
        }
      }
    }

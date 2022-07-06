@@ -59,8 +59,9 @@
 using namespace Ikarus;
 using namespace Dune::Indices;
 
-int main() {
+int main(int argc, char **argv) {
 
+  Dune::MPIHelper::instance(argc, argv);
   constexpr int griddim     = 2;
   constexpr int dimworld    = 2;
 
@@ -118,7 +119,7 @@ int main() {
 #if eletype == 1
   /// Creating YaspGrid
   using Grid        = Dune::YaspGrid<griddim>;
-  const size_t elex = 2;
+  const size_t elex = 1;
 
   Dune::FieldVector<double, 2> bbox = {L, L};
   std::array<int, 2> eles           = {elex, elex};
@@ -129,7 +130,7 @@ int main() {
   using namespace Dune::Functions::BasisFactory;
 
   /// Create nurbs basis with extracted preBase from grid
-  auto basis = makeBasis(gridView, power<3>(lagrange<1>(),FlatInterleaved()));
+  auto basis = makeBasis(gridView, power<3>(lagrange<2>(),FlatInterleaved()));
 //  auto basis = makeBasis(gridView, composite(lagrange<1>(),lagrange<1>(),lagrange<1>(),FlatInterleaved()));
 
   /// Fix complete boundary (simply supported plate)
@@ -137,7 +138,7 @@ int main() {
   Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0), [&](auto&& index) { dirichletFlags[index] = true; });
 
   // Function for distributed load
-  auto volumeLoad = [](auto& globalCoord, auto& lamb) {
+  auto volumeLoad = [](auto& lamb) {
     Eigen::Vector<double, 3> fext;
     fext.setZero();
     fext[0] = lamb;
@@ -193,8 +194,14 @@ int main() {
   solver.compute(K);
   w -= solver.solve(R);
 
-  // Output solution to vtk
+#if eletype == 0
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
+#endif
+
+#if eletype == 1
+  auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(subspaceBasis(basis, _0), w);
+#endif
+  // Output solution to vtk
   Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(0));
   vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
   vtkWriter.write(output_file);
@@ -205,24 +212,24 @@ int main() {
   const double w_max_ana = ((5.0/384.0) - (4.0/Dune::power(pi,5)) * (0.68562 + 0.00025)) * factor_ana;
 
   /// Find displacement w at the center of the plate (x=y=5.0=Lmid)
-  auto wGlobalFunction = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 1>>(basis, w);
-  auto localw          = localFunction(wGlobalFunction);
+//  auto wGlobalFunction = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 1>>(subspaceBasis(basis, _0), w);
+  auto localw          = localFunction(wGlobalFunc);
   double w_fe = 0.0;
   const double Lmid = L/2.0;
-//  Eigen::Vector2d c_pos;
-//  c_pos[0] = c_pos[1] = Lmid;
-//  auto localView = basis.localView();
-//
-//  for (auto& ele : elements(gridView)) {
-//    localView.bind(ele);
-//    localw.bind(ele);
-//    const auto geo   = localView.element().geometry();
-//    if (((geo.corner(0)[0] <= Lmid) and (Lmid <= geo.corner(1)[0])) and ((geo.corner(0)[1] <= Lmid) and (Lmid <= geo.corner(2)[1])))
-//    {
-//        const auto local_pos = geo.local(toFieldVector(c_pos));
-//        w_fe = localw(local_pos);
-//    }
-//  }
+  Eigen::Vector2d c_pos;
+  c_pos[0] = c_pos[1] = Lmid;
+  auto localView = basis.localView();
+
+  for (auto& ele : elements(gridView)) {
+    localView.bind(ele);
+    localw.bind(ele);
+    const auto geo   = localView.element().geometry();
+    if (((geo.corner(0)[0] <= Lmid) and (Lmid <= geo.corner(1)[0])) and ((geo.corner(0)[1] <= Lmid) and (Lmid <= geo.corner(2)[1])))
+    {
+        const auto local_pos = geo.local(toFieldVector(c_pos));
+        w_fe = localw(local_pos);
+    }
+  }
   std::cout<<"#################################################";
   std::cout<<std::endl<<"w_max_ana: " << w_max_ana << std::endl<<"w_fe     : " << w_fe << std::endl;
   std::cout<<"The error is:"<<sqrt(Dune::power((w_max_ana-w_fe),2))<<std::endl;
