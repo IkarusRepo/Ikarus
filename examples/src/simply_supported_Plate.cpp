@@ -133,9 +133,22 @@ int main(int argc, char **argv) {
   auto basis = makeBasis(gridView, power<3>(lagrange<2>(),FlatInterleaved()));
 //  auto basis = makeBasis(gridView, composite(lagrange<1>(),lagrange<1>(),lagrange<1>(),FlatInterleaved()));
 
-  /// Fix complete boundary (simply supported plate)
+  /// Fix complete boundary (simply supported plate) - Soft Support
   std::vector<bool> dirichletFlags(basis.size(), false);
   Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0), [&](auto&& index) { dirichletFlags[index] = true; });
+
+//  /// Fix complete boundary (simply supported plate) - Hard Support
+//  std::vector<bool> dirichletFlags(basis.size(), false);
+//  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0), [&](auto&& index) { dirichletFlags[index] = true; });
+//  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _1), [&](auto &&localIndex, auto &&localView, auto &&intersection) {
+//    if ((std::abs(intersection.geometry().center()[0]) < 1e-8) or (std::abs(intersection.geometry().center()[0]-L) < 1e-8))
+//      dirichletFlags[localView.index(localIndex)] = true;
+//  });
+//  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _2), [&](auto &&localIndex, auto &&localView, auto &&intersection) {
+//    if ((std::abs(intersection.geometry().center()[1]) < 1e-8) or (std::abs(intersection.geometry().center()[1]-L) < 1e-8))
+//      dirichletFlags[localView.index(localIndex)] = true;
+//  });
+
 
   // Function for distributed load
   auto volumeLoad = [](auto& lamb) {
@@ -201,6 +214,7 @@ int main(int argc, char **argv) {
 #if eletype == 1
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(subspaceBasis(basis, _0), w);
 #endif
+
   // Output solution to vtk
   Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(0));
   vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
