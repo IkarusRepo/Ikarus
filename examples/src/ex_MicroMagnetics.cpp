@@ -165,6 +165,7 @@ int main(int argc, char **argv) {
     return fext;
   };
 
+  fes.reserve(gridView.size(0));
   int insideCounter = 0;
   for (auto &element : elements(gridView)) {
     auto geoCoord       = element.geometry().center();
@@ -178,7 +179,7 @@ int main(int argc, char **argv) {
   DirectorVector mBlocked(basisEmbeddedC.size({Dune::Indices::_0}));
   for (auto &msingle : mBlocked) {
     if constexpr (directorDim == 3)
-      msingle.setValue( Eigen::Vector<double, directorDim>::UnitX());
+      msingle.setValue( Eigen::Vector<double, directorDim>::UnitZ()+0.01 * Eigen::Vector<double, directorDim>::Random());
     else
       msingle.setValue(0.1 * Eigen::Vector<double, directorDim>::Random()
                        + Eigen::Vector<double, directorDim>::UnitX());
