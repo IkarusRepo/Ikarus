@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
   int terms=0;
   Eigen::VectorXd xdOld(1);
   xdOld(0)=1;
-  while(Dune::FloatCmp::gt(std::abs(oldEnergy-newEnergy),1e-10)){
+  while(Dune::FloatCmp::gt(std::abs(oldEnergy-newEnergy),1e-16)){
     ++terms;
 //    for (int j = 0; j < 1; ++j) {
       const double R = 8;
@@ -248,10 +248,10 @@ int main(int argc, char** argv) {
       };
 
       std::cout<<"MzatR: "<<mz(R)<<std::endl;
-      Ikarus::plot::drawFunction(mz, {0, R}, 100);
-      Ikarus::plot::drawFunction(magE, {0, R}, 100);
-      Ikarus::plot::drawFunction(exE, {0, R}, 100);
-      Ikarus::plot::drawFunction(RexE, {0, R}, 100);
+//      Ikarus::plot::drawFunction(mz, {0, R}, 100);
+//      Ikarus::plot::drawFunction(magE, {0, R}, 100);
+//      Ikarus::plot::drawFunction(exE, {0, R}, 100);
+//      Ikarus::plot::drawFunction(RexE, {0, R}, 100);
 //    }
       std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
       std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
