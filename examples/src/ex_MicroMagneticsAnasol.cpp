@@ -3,15 +3,18 @@
 //
 
 #include <config.h>
-#include <chrono>
 
 #include <autodiff/common/eigen.hpp>
 #include <autodiff/forward/dual.hpp>
 #include <autodiff/forward/dual/eigen.hpp>
+#include <chrono>
 #include <cmath>
 #include <numbers>
 
 #include <dune/common/power.hh>
+#include <dune/geometry/quadraturerules.hh>
+#include <dune/geometry/quadraturerules/compositequadraturerule.hh>
+#include <dune/geometry/type.hh>
 
 #include <spdlog/spdlog.h>
 
@@ -21,6 +24,34 @@
 #include <ikarus/utils/drawing/matplotHelper.hh>
 #include <ikarus/utils/functionSanityChecks.hh>
 #include <ikarus/utils/integrators/AdaptiveIntegrator.hpp>
+
+
+template <typename F>
+auto ownIntegrator(F&& f, const double R, const double tol) {
+  const auto& rule
+      = Dune::QuadratureRules<double, 1>::rule(Dune::GeometryTypes::line, 3, Dune::QuadratureType::GaussLegendre);
+  using ScalarType = decltype(f(std::declval<double>()));
+  ScalarType res    = 0;
+  ScalarType resOld = 1;
+  int refine                                 = 1;
+  while (abs(resOld - res)>tol) {
+    Dune::CompositeQuadratureRule rC(rule, Dune::RefinementIntervals(refine));
+    resOld = res;
+    res    = 0;
+
+    int count = 0;
+    for (auto& gp : rC) {
+      res += f(R * gp.position()[0]) * gp.weight() * R;
+      ++count;
+    }
+
+    ++refine;
+    //    std::cout << "count" << count << std::endl;
+    //    std::cout << "OldEnergy: " << resOld << std::endl;
+    //    std::cout << "Energy: " << res << std::endl;
+  }
+  return res;
+}
 
 template <typename F, typename DF>
 auto exchangeEnergy(F&& f, DF&& df, double rho, double H) -> decltype(f(rho)) {
@@ -58,8 +89,8 @@ template <typename F, typename DF>
 auto magnetoStaticEnergy(F&& f, DF&& df, const double rho, const double R, const double H, double tol)
     -> decltype(f(rho)) {
 
-  const double pi = std::numbers::pi;
-  const double delta = H/2;
+//  const double pi    = std::numbers::pi;
+  const double delta = H / 2;
 
   auto magnetoStaticEnergyF = [&](auto rhoS) -> decltype(f(rho)) {
     return kernel(rho,rhoS,delta)  * cos(f(rhoS)) * rhoS ;
@@ -131,10 +162,54 @@ auto residualIntegrator(F&& f, DF&& df, DDF&& ddf, const double R, const double 
 }
 
 template <typename F, typename DF>
+auto gradientIntegrator(F&& f, DF&& df, const double R, const double H, const double tol, auto xd) {
+  const double delta = H / 2;
+  const double pi = std::numbers::pi;
+
+
+  auto exE = [&](auto rho,int i) -> decltype(f(rho)) {
+    const double f1 = (2.0 * i + 1.0) * pi / R / 2.0;
+    const fourierAnsatzRho = fourierAnsatz(xd,rho,R);
+    auto sinfourierAnsatz_rho = sin(fourierAnsatzRho);
+    auto cosfourierAnsatz_rho = cos(fourierAnsatzRho);
+    auto fourierAnsatz_daiRho = sin(f1*rho);
+    auto fourierAnsatz_daiRhocos = cos(f1*rho);
+
+    auto exES = [&](auto rhoS) -> decltype(f(rhoS)) {
+      auto sinfourierAnsatz_rhoS = sin(fourierAnsatzRhoS);
+      const fourierAnsatzRhoS = fourierAnsatz(xd,rhoS,R);
+      auto cosfourierAnsatz_rhoS = cos(fourierAnsatzRhoS);
+      auto fourierAnsatz_daiRhoS = sin(f1*rhoS);
+
+      return -4*rho*rhoS*(fourierAnsatz_daiRho*sinfourierAnsatz_rho*cosfourierAnsatz_rhoS + cosfourierAnsatz_rho*fourierAnsatz_daiRhoS*sinfourierAnsatz_rhoS)* ellipticIntegralFactor(rho,rhoS,delta);
+    }
+      auto exchangeEnergy=  (fourierAnsatz_daiRhocos*fourierAnsatz_daiRhocos*xd[i]*f1*f1*rho*rho +
+                                         cos(f1*rho)*cos(f2*rho)*aj*f1*f2*rho^2 + cos(ai*sin(f1*rho) + aj*sin(f2*rho))*sin(f1*rho)*sin(ai*sin(f1*rho) + aj*sin(f2*rho)))/rho
+
+  return integrator.integrate(exES, 0, rho, tol);
+  };
+  Eigen::Vector g;
+  g.resizeLike(xd);
+  AdaptiveIntegrator::IntegratorC integrator;
+  for (int i = 0; i < xd.size(); ++i) {
+    auto integrand = [&](auto rho) { return exE(rho,i);};
+    g[i]= integrator.integrate(integrand, 0, R, tol);
+    integrator.reset();
+  }
+
+
+
+  return g;
+}
+
+
+
+
+template <typename F, typename DF>
 auto energyIntegratorEX(F&& f, DF&& df, const double R, const double H, const double tol) {
   auto exE = [&](auto rho) -> decltype(f(rho)) { return exchangeEnergy(f, df, rho, H); };
-  AdaptiveIntegrator::IntegratorC integrator;
-  return integrator.integrate(exE, 0, R, tol);
+
+  return ownIntegrator(exE, R, tol);
 }
 
 template <typename F, typename DF>
@@ -147,70 +222,73 @@ auto energyIntegratorMag(F&& f, DF&& df, const double R, const double H, const d
 int main(int argc, char** argv) {
   std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
   Eigen::VectorXd radii(11);
-  Eigen::Matrix<double,5,Eigen::Dynamic> results(5,radii.size()*radii.size());
-//  radii<<0.5, 1, 2,3,4;
-  double oldEnergy=1;
-  double newEnergy=0;
-  int terms=0;
-  Eigen::VectorXd xdOld(1);
-  xdOld(0)=1;
-  while(Dune::FloatCmp::gt(std::abs(oldEnergy-newEnergy),1e-16)){
+  Eigen::Matrix<double, 5, Eigen::Dynamic> results(5, radii.size() * radii.size());
+    radii<<0.5, 1, 2,3,4,5,6,7,8,9,10;
+  double oldEnergy = 1;
+  double newEnergy = 0;
+  int terms        = 9;
+  Eigen::VectorXd xdOld(terms+1);
+  for (int i = 0; i < terms; ++i) {
+    xdOld[i]=1.5/(Dune::power(i,3))
+  }
+  std::cout<<xdOld<<std::endl;
+      for (int i = 0; i < radii.size(); ++i) {
+      for (int j = 0; j < radii.size(); ++j) {
+  while (Dune::FloatCmp::gt(std::abs(oldEnergy - newEnergy), 1e-8)) {
     ++terms;
-//    for (int j = 0; j < 1; ++j) {
-      const double R = 8;
-      const double H = 0.5;
-      std::cout << "R: " << R << " H: " << H << std::endl;
-      Eigen::VectorXd xd(terms);
-      std::cout<<xd.size()<<" "<<xdOld.size()<<std::endl;
-      if(terms>1) {
-        xd.setZero();
-        xd.head(terms - 1) = xdOld;
-      } else
-        xd.setOnes();
-      std::cout<<"Coeffs Begin: "<<xd<<std::endl;
+    //    for (int j = 0; j < 1; ++j) {
+    const double R = radii[i] * sqrt(2);
+    const double H = radii[i] * sqrt(2);
+    std::cout << "R: " << R << " H: " << H << std::endl;
+    Eigen::VectorXd xd(terms);
+    std::cout << xd.size() << " " << xdOld.size() << std::endl;
+    if (terms > 1) {
+      xd.setZero();
+      xd.head(terms - 1) = xdOld;
+    } else
+      xd.setOnes();
+    std::cout << "Coeffs Begin: " << xd << std::endl;
 
-//      for (int i = 0; i < xd.size(); ++i)
-//        xd[i] = 1.0/(i*i*i + 0.5);
-      std::cout << std::setprecision(17) << std::endl;
-//    std::cout << "Starting coeffs: \n" << xd << std::endl;
+    //      for (int i = 0; i < xd.size(); ++i)
+    //        xd[i] = 1.0/(i*i*i + 0.5);
+    std::cout << std::setprecision(17) << std::endl;
+    //    std::cout << "Starting coeffs: \n" << xd << std::endl;
 
       auto f = [&](auto x) { return fourierAnsatz<double>(xd, x, R); };
       auto df = [&](auto x) { return fourierAnsatzDerivative<double>(xd, x, R); };
       auto ddf = [&](auto x) { return fourierAnsatzSecondDerivative<double>(xd, x, R); };
 
-      //  Ikarus::plot::drawFunction(f, {0,R}, 100);
-      //  Ikarus::plot::drawFunction(df, {0,R}, 100);
-      const double tol = 1e-8;
-      auto energy = [&](auto &d) {
-        auto fdual = [&](auto x) { return fourierAnsatz(d, x, R); };
-        auto dfdual = [&](auto x) { return fourierAnsatzDerivative(d, x, R); };
-        return energyIntegrator(fdual, dfdual, R, H, tol);
-      };
+    //  Ikarus::plot::drawFunction(f, {0,R}, 100);
+    //  Ikarus::plot::drawFunction(df, {0,R}, 100);
+    const double tol = 1e-8;
+    auto energy      = [&](auto& d) {
+      auto fdual  = [&](auto x) { return fourierAnsatz(d, x, R); };
+      auto dfdual = [&](auto x) { return fourierAnsatzDerivative(d, x, R); };
+      return energyIntegrator(fdual, dfdual, R, H, tol);
+    };
 
-      auto grad = [&](auto &&d) {
-        auto xdR = d.template cast<autodiff::dual>().eval();
-        return autodiff::gradient(energy, wrt(xdR), at(xdR));
-      };
-      Eigen::SparseMatrix<double> hSparse;
-      auto hess = [&](auto &&d) {
-        auto xdR = d.template cast<autodiff::dual2nd>().eval();
-        hSparse = autodiff::hessian(energy, wrt(xdR), at(xdR)).sparseView();
-        return hSparse;
-      };
+    auto grad = [&](auto&& d) {
+      auto xdR = d.template cast<autodiff::dual>().eval();
+      return autodiff::gradient(energy, wrt(xdR), at(xdR));
+    };
 
-      auto nonLinOp = Ikarus::NonLinearOperator(linearAlgebraFunctions(energy, grad, hess), parameter(xd));
+    auto grad2 = [&](auto&& d) {
+      auto fdual  = [&](auto x) { return fourierAnsatz(d, x, R); };
+      auto dfdual = [&](auto x) { return fourierAnsatzDerivative(d, x, R); };
+      return gradientIntegrator(fdual,dfdual,R,H,tol,d);
+    };
 
-      //  double rhoTest = R/2;
-      //  auto nonLinOpTest = Ikarus::NonLinearOperator(linearAlgebraFunctions(f, df), parameter(rhoTest));
+    Eigen::SparseMatrix<double> hSparse;
+    auto hess = [&](auto&& d) {
+      auto xdR = d.template cast<autodiff::dual2nd>().eval();
+      hSparse  = autodiff::hessian(energy, wrt(xdR), at(xdR)).sparseView();
+      return hSparse;
+    };
 
-      //  checkGradient(nonLinOpTest, {.draw = true, .writeSlopeStatement = true});
-      //  checkHessian(nonLinOp, {.draw = false, .writeSlopeStatement = true});
-//      nonLinOp.update<0>();
-//      oldEnergy=nonLinOp.value();
-      auto tr = Ikarus::makeTrustRegion(nonLinOp);
+    auto nonLinOp = Ikarus::NonLinearOperator(linearAlgebraFunctions(energy, grad, hess), parameter(xd));
 
-      tr->setup({.verbosity = 1, .grad_tol=1e-10, .corr_tol=1e-10, .Delta0 = 1});
-      const auto solverInfo = tr->solve();
+    //  double rhoTest = R/2;
+    //  auto nonLinOpTest = Ikarus::NonLinearOperator(linearAlgebraFunctions(f, df), parameter(rhoTest));
 
       std::cout << "Strong Error: \n" << residualIntegrator(f,df,ddf,R,H,tol) << std::endl;
       std::cout << "Resulting coeffs: \n" << xd << std::endl;
@@ -264,9 +342,9 @@ int main(int argc, char** argv) {
   //  std::cout<<"IntVal: "<<integrator.integrate(f, 0, R, 1e-8)<<std::endl;
   //  integrator.reset();
 
-//  Eigen::VectorXdual xdual(xd.size());
-//  xdual             = xd;
-//  Eigen::VectorXd g = gradient(energy, autodiff::wrt(xdual), autodiff::at(xdual));
+  //  Eigen::VectorXdual xdual(xd.size());
+  //  xdual             = xd;
+  //  Eigen::VectorXd g = gradient(energy, autodiff::wrt(xdual), autodiff::at(xdual));
 
   //  const int tols = 5;
   //  std::vector<double> result1(tols);
@@ -287,6 +365,4 @@ int main(int argc, char** argv) {
   //  {
   //
   //  }
-
-
 }
