@@ -11,28 +11,6 @@ using std::numeric_limits;
 #include <iostream>
 using std::cerr;
 
-// template <class T>
-// class AdaptiveIntegrator : Integrator<T> {
-// private:
-//    const static double alpha, beta, x1, x2, x3;
-//    const static double x[12];
-//
-//    bool terminated;
-// public:
-//    AdaptiveIntegrator();
-//
-//    void set_tol(double tol);
-//
-//    double integrate(T &func, const double a, const double b, const double tol);
-//
-//    double adaptlobstp(T &func, const double a, const double b, const double fa,
-//         const double fb, const double is);
-//};
-//
-//
-// template <class T>
-// AdaptiveIntegrator<T>::AdaptiveIntegrator() : terminated(false) {}
-
 namespace AdaptiveIntegrator {
   const double alpha = sqrt(2. / 3.);
   const double beta  = 1. / sqrt(5.);
@@ -70,8 +48,12 @@ namespace AdaptiveIntegrator {
 
       if (is + (i1 - i2) == is or mll <= a or b <= mrr) {
         if ((m <= a or b <= m) and !terminated) {
+          std::cout<<"a: "<<a<<std::endl;
+          std::cout<<"b: "<<b<<std::endl;
+          std::cout<<"m: "<<m<<std::endl;
           cerr << "No machine number in the interval. Requested tolerance may not be met.\n";
           terminated = true;
+          return std::numeric_limits<double>::infinity();
         }
         return i1;
       } else {
