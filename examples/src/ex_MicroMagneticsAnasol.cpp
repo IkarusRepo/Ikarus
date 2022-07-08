@@ -99,7 +99,7 @@ auto fourierAnsatzSecondDerivative(const Eigen::VectorX<ScalarType>& d, double r
   const double pi = std::numbers::pi;
 
   for (int i = 0; i < d.size(); ++i)
-    res -= (Dune::power(2. * i + 1.,2) * Dune::power(pi,2) * sin(rho * (2. * i + 1.) * pi / (2.0 * R)) * d[i]) / (4.0 * Dune::power(R,2));
+    res -= Dune::power(2. * i + 1.,2) * Dune::power(pi,2) * sin(rho * (2. * i + 1.) * pi / (2.0 * R)) * d[i] / (4.0 * Dune::power(R,2));
 
   return res;
 }
@@ -124,7 +124,7 @@ auto residualIntegrator(F&& f, DF&& df, DDF&& ddf, const double R, const double 
       return cos(f(rhoS))*rhoS*kernel(rho,rhoS,delta);
     };
     AdaptiveIntegrator::IntegratorC integrator;
-    return abs(-8*sin(f(rho))*rho*integrator.integrate(mag,0,rho,tol)+2*pi*H*(sin(f(rho))*cos(f(rho))-df(rho)*rho-ddf(rho)*rho*rho));
+    return abs(-4*sin(f(rho))*rho*integrator.integrate(mag,0,R,tol)+((rho==0)? 0.0 : 2*pi*H*(sin(f(rho))*cos(f(rho))/rho-df(rho)-ddf(rho)*rho)));
   };
   AdaptiveIntegrator::IntegratorC integrator;
   return integrator.integrate(exE, 0, R, tol);
@@ -155,10 +155,11 @@ int main(int argc, char** argv) {
   Eigen::VectorXd xdOld(1);
   xdOld(0)=1;
   while(Dune::FloatCmp::gt(std::abs(oldEnergy-newEnergy),1e-16)){
+    begin = std::chrono::steady_clock::now();
     ++terms;
 //    for (int j = 0; j < 1; ++j) {
       const double R = 8;
-      const double H = 0.5;
+      const double H = 2;
       std::cout << "R: " << R << " H: " << H << std::endl;
       Eigen::VectorXd xd(terms);
       std::cout<<xd.size()<<" "<<xdOld.size()<<std::endl;
@@ -244,14 +245,14 @@ int main(int argc, char** argv) {
           return cos(f(rhoS))*rhoS*kernel(rho,rhoS,delta);
         };
         AdaptiveIntegrator::IntegratorC integrator;
-        return abs(-8*sin(f(rho))*rho*integrator.integrate(mag,0,rho,tol)+2*pi*H*(sin(f(rho))*cos(f(rho))-df(rho)*rho-ddf(rho)*rho*rho));
+        return abs(-4*sin(f(rho))*rho*integrator.integrate(mag,0,R,tol)+((rho==0)? 0.0 : 2*pi*H*(sin(f(rho))*cos(f(rho))/rho-df(rho)-ddf(rho)*rho)));
       };
 
       std::cout<<"MzatR: "<<mz(R)<<std::endl;
-//      Ikarus::plot::drawFunction(mz, {0, R}, 100);
+      Ikarus::plot::drawFunction(mz, {0, R}, 100);
 //      Ikarus::plot::drawFunction(magE, {0, R}, 100);
 //      Ikarus::plot::drawFunction(exE, {0, R}, 100);
-//      Ikarus::plot::drawFunction(RexE, {0, R}, 100);
+      Ikarus::plot::drawFunction(RexE, {0, R}, 100);
 //    }
       std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
       std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
