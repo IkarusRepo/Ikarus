@@ -9,6 +9,7 @@ refinement = 3
 #mshfilepath = /mshfiles/magnetSphere_3Sphere_h0.5_4R_zyl/magnetSphere_3Sphere_h0.5_4R_zyl.msh
 #mshfilepath = /mshfiles/magnetSphere_3Sphere_h0.5_8R_zyl/magnetSphere_3Sphere_h0.5_8R_zyl.msh
 mshfilepath = /mshfiles/magnetSphere_3Sphere_h2_8R_zyl/magnetSphere_3Sphere_h2_8R_zyl.msh
+#mshfilepath = /mshfiles/magnetSphere_3Sphere_h2_8R_zyl/magnetSphere_20Sphere_h2_8R_zyl.msh
 #mshfilepath = /mshfiles/magnetSphere_3Sphere_h1e-2_2R_zyl/magnetSphere_3Sphere_h1e-2_2R_zyl.msh
 innerRadius = 2 # 2.8284271247461903 # 4.242640687119286
 #innerDomainPredicate = "not (x[0]*x[0] + x[1]*x[1] - 1e-4 > 0.5*0.5 or abs(x[2]) >0.5)"
