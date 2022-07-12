@@ -25,11 +25,11 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
+#include <ikarus/finiteElements/feBases/powerBasisFE.hh>
 #include <ikarus/assembler/simpleAssemblers.hh>
 #include <ikarus/controlRoutines/loadControl.hh>
 #include <ikarus/finiteElements/feBases/autodiffFE.hh>
 #include <ikarus/finiteElements/feBases/scalarFE.hh>
-#include <ikarus/finiteElements/mechanics/RMPTFE.hh>
 #include <ikarus/linearAlgebra/nonLinearOperator.hh>
 #include <ikarus/localBasis/localBasis.hh>
 #include <ikarus/localFunctions/impl/standardLocalFunction.hh>
@@ -46,10 +46,10 @@
 namespace Ikarus {
 
   template <typename Basis>
-  class ReissnerMindlinPlate : public RMPTFE<Basis>{
+  class ReissnerMindlinPlate : public powerBasisFE<Basis>{
   public:
-    using BaseDisp = RMPTFE<Basis>;  // Handles globalIndices function
-    using GlobalIndex = typename RMPTFE<Basis>::GlobalIndex;
+    using BaseDisp = powerBasisFE<Basis>;  // Handles globalIndices function
+    using GlobalIndex = typename powerBasisFE<Basis>::GlobalIndex;
     using FERequirementType = FErequirements<Eigen::VectorXd>;
     using LocalView         = typename Basis::LocalView;
     using GridView         = typename Basis::GridView;

@@ -29,7 +29,6 @@
 #include <ikarus/controlRoutines/loadControl.hh>
 #include <ikarus/finiteElements/feBases/autodiffFE.hh>
 #include <ikarus/finiteElements/feBases/scalarFE.hh>
-#include <ikarus/finiteElements/mechanics/KPTFE.hh>
 #include <ikarus/linearAlgebra/nonLinearOperator.hh>
 #include <ikarus/localBasis/localBasis.hh>
 #include <ikarus/localFunctions/impl/standardLocalFunction.hh>
@@ -170,10 +169,10 @@ namespace Ikarus {
 namespace Ikarus {
 
   template <typename Basis>
-  class KirchhoffPlate : public KPTFE<Basis>{
+  class KirchhoffPlate : public ScalarFieldFE<Basis>{
   public:
-    using BaseDisp = KPTFE<Basis>;  // Handles globalIndices function
-    using GlobalIndex = typename KPTFE<Basis>::GlobalIndex;
+    using BaseDisp = ScalarFieldFE<Basis>;  // Handles globalIndices function
+    using GlobalIndex = typename ScalarFieldFE<Basis>::GlobalIndex;
     using FERequirementType = FErequirements<Eigen::VectorXd>;
     using LocalView         = typename Basis::LocalView;
     using GridView         = typename Basis::GridView;

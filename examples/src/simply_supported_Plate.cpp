@@ -207,13 +207,13 @@ int main(int argc, char **argv) {
   solver.compute(K);
   w -= solver.solve(R);
 
-  auto resultRequirements
-      = Ikarus::ResultRequirementsBuilder<MultiTypeVector>()
-            .insertGlobalSolution(Ikarus::FESolutions::magnetizationAndVectorPotential, mAndABlocked)
-            .insertParameter(Ikarus::FEParameter::loadfactor, lambda)
-            .addResultRequest(ResultType::gradientNormOfMagnetization, ResultType::BField, ResultType::HField,
-                              ResultType::divergenceOfVectorPotential)
-            .build();
+//  auto resultRequirements
+//      = Ikarus::ResultRequirementsBuilder<MultiTypeVector>()
+//            .insertGlobalSolution(Ikarus::FESolutions::magnetizationAndVectorPotential, mAndABlocked)
+//            .insertParameter(Ikarus::FEParameter::loadfactor, lambda)
+//            .addResultRequest(ResultType::gradientNormOfMagnetization, ResultType::BField, ResultType::HField,
+//                              ResultType::divergenceOfVectorPotential)
+//            .build();
 
 #if eletype == 0
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
