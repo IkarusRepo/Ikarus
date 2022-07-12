@@ -77,7 +77,8 @@ namespace Ikarus {
     BField,
     HField,
     cauchyStress,
-    director
+    director,
+    stressResultant
   };
   // clang-format on
   std::string getResultType(const ResultType &res);
