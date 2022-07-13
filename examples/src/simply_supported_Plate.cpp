@@ -49,6 +49,10 @@
 // Computer Methods in Applied Mechanics and Engineering 254, 170–180. https://doi.org/10.1016/j.cma.2012.10.018
 // Section 5.1
 
+// [2] Oesterle, B., Ramm, E., Bischoff, M., 2016. A shear deformable, rotation-free isogeometric shell formulation.
+// Computer Methods in Applied Mechanics and Engineering 307, 235–255. https://doi.org/10.1016/j.cma.2016.04.015
+// Section 5.1
+
 
 // Element types (eletype):
 // 0 = Kirchhoff Plate Element (w)
@@ -68,7 +72,7 @@ int main(int argc, char **argv) {
   const double L = 10.0;
   const double Emod      = 1000;
   const double nu        = 0.3;
-  const double thickness = 0.1;
+  const double thickness = 1.0;
   const int refinement_level = 3;
 
 #if eletype == 0
@@ -129,9 +133,8 @@ int main(int argc, char **argv) {
 
   using namespace Dune::Functions::BasisFactory;
 
-  /// Create nurbs basis with extracted preBase from grid
-  auto basis = makeBasis(gridView, power<3>(lagrange<2>(),FlatInterleaved()));
-//  auto basis = makeBasis(gridView, composite(lagrange<1>(),lagrange<1>(),lagrange<1>(),FlatInterleaved()));
+  /// Create power basis
+  auto basis = makeBasis(gridView, power<3>(lagrange<1>(),FlatInterleaved()));
 
   /// Fix complete boundary (simply supported plate) - Soft Support
   std::vector<bool> dirichletFlags(basis.size(), false);
@@ -207,25 +210,47 @@ int main(int argc, char **argv) {
   solver.compute(K);
   w -= solver.solve(R);
 
-//  auto resultRequirements
-//      = Ikarus::ResultRequirementsBuilder<MultiTypeVector>()
-//            .insertGlobalSolution(Ikarus::FESolutions::magnetizationAndVectorPotential, mAndABlocked)
-//            .insertParameter(Ikarus::FEParameter::loadfactor, lambda)
-//            .addResultRequest(ResultType::gradientNormOfMagnetization, ResultType::BField, ResultType::HField,
-//                              ResultType::divergenceOfVectorPotential)
-//            .build();
-
 #if eletype == 0
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
 #endif
 
 #if eletype == 1
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(subspaceBasis(basis, _0), w);
+
+  auto resultRequirements
+      = Ikarus::ResultRequirementsBuilder<Eigen::VectorXd>()
+            .insertGlobalSolution(Ikarus::FESolutions::displacement, w)
+            .insertParameter(Ikarus::FEParameter::loadfactor, qz)
+            .addResultRequest(ResultType::stressResultant)
+            .build();
+
+  ResultTypeMap<double> result;
+  auto scalarBasis     = makeBasis(gridView, lagrange<1>());
+  auto localScalarview = scalarBasis.localView();
+  std::vector<Dune::FieldVector<double,3>> stressRes(scalarBasis.size());
+  auto ele = elements(gridView).begin();
+
+  for (auto &fe : fes) {
+    localScalarview.bind(*ele);
+    const auto &fe2              = localScalarview.tree().finiteElement();
+    const auto &referenceElement = Dune::ReferenceElements<double, griddim>::general(ele->type());
+    for (auto c = 0UL; c < fe2.size(); ++c) {
+      const auto fineKey                        = fe2.localCoefficients().localKey(c);
+      const auto nodalPositionInChildCoordinate = referenceElement.position(fineKey.subEntity(), fineKey.codim());
+      auto coord = toEigenVector(nodalPositionInChildCoordinate);
+      fe.calculateAt(resultRequirements, coord, result);
+      stressRes[localScalarview.index(localScalarview.tree().localIndex(c))[0]] = toFieldVector(result.getResult(ResultType::stressResultant));
+    }
+    ++ele;
+  }
+  auto stressResGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 3>>(
+      scalarBasis, stressRes);
 #endif
 
   // Output solution to vtk
   Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(0));
   vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
+  vtkWriter.addVertexData(stressResGlobalFunc, Dune::VTK::FieldInfo("stressRes", Dune::VTK::FieldInfo::Type::vector, 3));
   vtkWriter.write(output_file);
 
   /// Create analytical solution function for the simply supported case
@@ -235,12 +260,12 @@ int main(int argc, char **argv) {
 
   /// Find displacement w at the center of the plate (x=y=5.0=Lmid)
 //  auto wGlobalFunction = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 1>>(subspaceBasis(basis, _0), w);
+  auto localView = basis.localView();
   auto localw          = localFunction(wGlobalFunc);
   double w_fe = 0.0;
   const double Lmid = L/2.0;
   Eigen::Vector2d c_pos;
   c_pos[0] = c_pos[1] = Lmid;
-  auto localView = basis.localView();
 
   for (auto& ele : elements(gridView)) {
     localView.bind(ele);
