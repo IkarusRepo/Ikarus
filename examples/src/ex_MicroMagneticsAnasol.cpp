@@ -17,6 +17,9 @@
 #include <dune/geometry/type.hh>
 
 #include <spdlog/spdlog.h>
+#include <spdlog/fmt/ostr.h>
+#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 #include <Eigen/Core>
 
@@ -28,23 +31,24 @@
 template <typename F>
 auto ownIntegrator(F&& f, const double R, const double tol) {
   const auto& rule
-      = Dune::QuadratureRules<double, 1>::rule(Dune::GeometryTypes::line, 3, Dune::QuadratureType::GaussLegendre);
+      = Dune::QuadratureRules<double, 1>::rule(Dune::GeometryTypes::line, 5, Dune::QuadratureType::GaussLegendre);
   using ScalarType  = decltype(f(std::declval<double>()));
   ScalarType res    = 0;
   ScalarType resOld = 1;
-  int refine        = 1;
+  int refine        = 1310720;
+//  std::cout<<"ownIntegrator"<<std::endl;
   while (abs(resOld - res) > tol) {
     Dune::CompositeQuadratureRule rC(rule, Dune::RefinementIntervals(refine));
     resOld = res;
     res    = 0;
-
+//    std::cout<<rC.size()<<std::endl;
     int count = 0;
     for (auto& gp : rC) {
       res += f(R * gp.position()[0]) * gp.weight() * R;
       ++count;
     }
 
-    ++refine;
+    refine*=2;
     //    std::cout << "count" << count << std::endl;
     //    std::cout << "OldEnergy: " << resOld << std::endl;
     //    std::cout << "Energy: " << res << std::endl;
@@ -94,8 +98,16 @@ auto magnetoStaticEnergy(F&& f, DF&& df, const double rho, const double R, const
 
   auto magnetoStaticEnergyF
       = [&](auto rhoS) -> decltype(f(rho)) { return kernel(rho, rhoS, delta) * cos(f(rhoS)) * rhoS; };
-  AdaptiveIntegrator::IntegratorC integrator;
-  return 4 * cos(f(rho)) * rho * integrator.integrate(magnetoStaticEnergyF, 0, rho, tol);
+
+  try {
+    AdaptiveIntegrator::IntegratorC integrator;
+    return 4 * cos(f(rho)) * rho * integrator.integrate(magnetoStaticEnergyF, 0, rho, tol);
+  }
+  catch( const std::invalid_argument& e ) {
+    AdaptiveIntegrator::IntegratorC integrator;
+    return decltype(f(rho)){0};
+  }
+
 }
 
 struct FourierAnsatz
@@ -183,8 +195,15 @@ auto energyIntegrator(F&& f, DF&& df, const double R, const double H, const doub
   auto exE = [&](auto rho) -> decltype(f(rho)) {
     return exchangeEnergy(f, df, rho, H) + magnetoStaticEnergy(f, df, rho, R, H, tol);
   };
-  AdaptiveIntegrator::IntegratorC integrator;
-  return integrator.integrate(exE, 0, R, tol);
+  try {
+    AdaptiveIntegrator::IntegratorC integrator;
+    return integrator.integrate(exE, 0, R, tol);
+  }
+  catch( const std::invalid_argument& e ) {
+    AdaptiveIntegrator::IntegratorC integrator;
+    return decltype(integrator.integrate(exE, 0, R, tol)){0};
+  }
+
 }
 
 template <typename F, typename DF, typename DDF>
@@ -196,8 +215,14 @@ auto residualIntegrator(F&& f, DF&& df, DDF&& ddf, const double R, const double 
     AdaptiveIntegrator::IntegratorC integrator;
     return abs(-4*sin(f(rho))*rho*integrator.integrate(mag,0,R,tol)+((rho==0)? 0.0 : 2*pi*H*(sin(f(rho))*cos(f(rho))/rho-df(rho)-ddf(rho)*rho)));
   };
-  AdaptiveIntegrator::IntegratorC integrator;
-  return integrator.integrate(exE, 0, R, tol);
+  try {
+    AdaptiveIntegrator::IntegratorC integrator;
+    return integrator.integrate(exE, 0, R, tol);
+  }
+  catch( const std::invalid_argument& e ) {
+    AdaptiveIntegrator::IntegratorC integrator;
+    return decltype(integrator.integrate(exE, 0, R, tol)){0};
+  }
 }
 
 template <typename F, typename DF>
@@ -210,58 +235,76 @@ auto energyIntegratorEX(F&& f, DF&& df, const double R, const double H, const do
 template <typename F, typename DF>
 auto energyIntegratorMag(F&& f, DF&& df, const double R, const double H, const double tol) {
   auto exE = [&](auto rho) -> decltype(f(rho)) { return magnetoStaticEnergy(f, df, rho, R, H, tol); };
-  AdaptiveIntegrator::IntegratorC integrator;
-  return integrator.integrate(exE, 0, R, tol);
+  try {
+    AdaptiveIntegrator::IntegratorC integrator;
+    return integrator.integrate(exE, 0, R, tol);
+  }
+  catch( const std::invalid_argument& e ) {
+    AdaptiveIntegrator::IntegratorC integrator;
+    return decltype(integrator.integrate(exE, 0, R, tol)){0};
+  }
 }
 
 int main(int argc, char** argv) {
+  auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+  console_sink->set_level(spdlog::level::trace);
+//  console_sink->set_pattern("[%^%l%$] %v");
 
+  auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>("logs/Micromagnetics.txt", false);
+  file_sink->set_level(spdlog::level::trace);
+//  file_sink->set_pattern("[%^%l%$] %v");
+
+  //    spdlog::logger logger("multi_sink", {console_sink, file_sink});
+  spdlog::logger logger("multi_sink", {console_sink,file_sink});
+  spdlog::set_default_logger(std::make_shared<spdlog::logger>(logger));
+  spdlog::flush_every(std::chrono::seconds(1));
+//  spdlog::set_pattern("*** [%H:%M:%S %z] [thread %t] %v ***");
+
+  Eigen::IOFormat HeavyFmt(Eigen::FullPrecision, 0, " ", "\n", "", "", "\n", "");
   using Ansatz = FourierAnsatz;
 //  using Ansatz = PowerAnsatz;
   std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-  Eigen::VectorXd radii(2);
-  Eigen::Matrix<double, 6, Eigen::Dynamic> results(6, radii.size() * radii.size());
-//      radii<<0.5, 1, 2,3,4,5,6,7,8,9,10;
-  radii << 0.5,8;
+  Eigen::VectorXd radii(11);
+  Eigen::VectorXd heights(11);
+  Eigen::Matrix<double, 8, Eigen::Dynamic> results(8, radii.size() * heights.size());
+    radii<<0.5, 1, 2,3,4,5,6,7,8,9,10;
+  heights<<0.5, 1, 2,3,4,5,6,7,8,9,10;
+//  radii << 0.5,8;
   double oldEnergy = 1;
   double newEnergy = 0;
-  int terms0        = 1;
+  int terms0       = 1;
   int terms        = terms0;
 
   for (int i = 0; i < radii.size(); ++i) {
-    for (int j = 0; j < radii.size(); ++j) {
-      terms        = terms0;
+    for (int j = 0; j < heights.size(); ++j) {
+      terms        = terms-1;
       Eigen::VectorXd xdOld(terms);
-      for (int i = 0; i < xdOld.size(); ++i) {
-        xdOld[i] = 1.0/(i*i*i + 0.5);
+      for (int k = 0; k < xdOld.size(); ++k) {
+        xdOld[k] = 1.0/(k*k*k + 0.5);
       }
 //      std::cout << xdOld << std::endl;
       double strongError = 0;
       double R, H, magE, exE;
       oldEnergy=1;
       newEnergy = 0;
-      while (Dune::FloatCmp::gt(std::abs(oldEnergy - newEnergy), 1e-8)) {
+      while (Dune::FloatCmp::gt(std::abs(oldEnergy - newEnergy), 1e-6)) {
         ++terms;
-        R = radii[i];// * sqrt(2);
-        H = radii[j];// * sqrt(2);
-        std::cout << "R: " << R << " H: " << H << std::endl;
+        R = radii[i] * sqrt(2);
+        H = heights[j]* sqrt(2);
+
         Eigen::VectorXd xd(terms);
-        std::cout << xd.size() << " " << xdOld.size() << std::endl;
+//        std::cout << xd.size() << " " << xdOld.size() << std::endl;
         if (terms > 1) {
           xd.setZero();
           xd.head(terms - 1) = xdOld;
         } else
           xd.setOnes();
         auto f   = [&](auto x) { return Ansatz::value<double>(xd, x, R); };
-//        xd/= (f(R)+10);
-        std::cout << "Coeffs Begin: " << xd << std::endl;
-
-        //      for (int i = 0; i < xd.size(); ++i)
-        //        xd[i] = 1.0/(i*i*i + 0.5);
-        std::cout << std::setprecision(17) << std::endl;
-        //    std::cout << "Starting coeffs: \n" << xd << std::endl;
+        spdlog::info("R: {:.16f} H: {:.16f}" , R , H );
+        spdlog::info("Coeffs Begin: {}",xd.format(HeavyFmt)  );
 
 
+//        std::cout << std::setprecision(17) << std::endl;
 
         auto df  = [&](auto x) { return Ansatz::derivative<double>(xd, x, R); };
         auto ddf = [&](auto x) { return Ansatz::secondDerivative<double>(xd, x, R); };
@@ -280,12 +323,6 @@ int main(int argc, char** argv) {
           return autodiff::gradient(energy, wrt(xdR), at(xdR));
         };
 
-        auto grad2 = [&](auto&& d) {
-          auto fdual  = [&](auto x) { return Ansatz::value(d, x, R); };
-          auto dfdual = [&](auto x) { return Ansatz::derivative(d, x, R); };
-          return gradientIntegrator(fdual, dfdual, R, H, tol, d);
-        };
-
         Eigen::SparseMatrix<double> hSparse;
         auto hess = [&](auto&& d) {
           auto xdR = d.template cast<autodiff::dual2nd>().eval();
@@ -295,30 +332,70 @@ int main(int argc, char** argv) {
 
         auto nonLinOp = Ikarus::NonLinearOperator(linearAlgebraFunctions(energy, grad, hess), parameter(xd));
 
-        auto tr = Ikarus::makeTrustRegion(nonLinOp);
+        auto tr = Ikarus::makeTrustRegion<decltype(nonLinOp),Ikarus::PreConditioner::IncompleteCholesky>(nonLinOp);
 
         tr->setup({.verbosity = 1, .grad_tol=1e-10, .corr_tol=1e-10, .Delta0 = 1});
-        const auto solverInfo = tr->solve();
+
+        try {
+          const auto solverInfo = tr->solve();
+          if(!solverInfo.sucess)
+          {
+            results(0, i * radii.size() + j) = R;
+            results(1, i * radii.size() + j) = H;
+//            results(2, i * radii.size() + j) = std::numeric_limits<double>::infinity();
+//            results(3, i * radii.size() + j) = std::numeric_limits<double>::infinity();
+            magE = std::numeric_limits<double>::infinity();
+            strongError = std::numeric_limits<double>::infinity();
+            results(6, i * radii.size() + j) = terms;
+
+            spdlog::info("Failed since TrustRegion didn't converge" );
+            break;
+          }
+        }
+        catch( const std::invalid_argument& e ) {
+          results(0, i * radii.size() + j) = R;
+          results(1, i * radii.size() + j) = H;
+          results(2, i * radii.size() + j) = std::numeric_limits<double>::infinity();
+          results(3, i * radii.size() + j) = std::numeric_limits<double>::infinity();
+          results(4, i * radii.size() + j) = std::numeric_limits<double>::infinity();
+          results(5, i * radii.size() + j) = std::numeric_limits<double>::infinity();
+          results(6, i * radii.size() + j) = terms;
+          const auto& curcols = results.leftCols(i * radii.size() + j+1).transpose();
+
+          spdlog::info("Result: {}",curcols.format(HeavyFmt)  );
+          break;
+        }
+
+
+
+
+
         //  double rhoTest = R/2;
         //  auto nonLinOpTest = Ikarus::NonLinearOperator(linearAlgebraFunctions(f, df), parameter(rhoTest));
         strongError = residualIntegrator(f, df, ddf, R, H, tol);
-        std::cout << "Strong Error: \n" << strongError << std::endl;
-        std::cout << "Resulting coeffs: \n" << xd << std::endl;
+        spdlog::info("Strong Error: {0:.16f}" , strongError );
+        spdlog::info("Resulting coeffs: " );
+        spdlog::info("Resulting Begin: {}",xd.format(HeavyFmt)  );
         xdOld = xd;
+
+
 
         //  std::cout << "First we approximate the integral of f(x) = x^2 on [0,2]" << std::endl;
         //  AdaptiveIntegrator::IntegratorC integrator;
-        std::cout << std::setprecision(17) << std::endl;
+//        std::cout << std::setprecision(17) << std::endl;
         exE = energyIntegratorEX(f, df, R, H, tol);
-        std::cout << "ExchangeEnergy: " << exE << std::endl;
+        spdlog::info("ExchangeEnergy: {0:.16f}" , exE );
+
+
+
         magE = energyIntegratorMag(f, df, R, H, tol);
-        std::cout << "MagnetoStaticEnergy: " << magE << std::endl;
+        spdlog::info("MagnetoStaticEnergy: {0:.16f}" , magE );
         nonLinOp.update<0>();
         oldEnergy = newEnergy;
         newEnergy = nonLinOp.value();
-        std::cout << "oldEnergy: " << oldEnergy << std::endl;
-        std::cout << "newEnergy: " << newEnergy << std::endl;
-        std::cout << "diff: " << oldEnergy - newEnergy << std::endl;
+        spdlog::info("oldEnergy: {0:.16f}" , oldEnergy );
+        spdlog::info("newEnergy: {0:.16f}" , newEnergy );
+        spdlog::info("diff: {0:.16f}" , oldEnergy - newEnergy );
 
         auto mz            = [&](auto x) { return cos(Ansatz::value<double>(xd, x, R)); };
         auto magEFunc          = [&](auto rho) -> decltype(f(rho)) { return magnetoStaticEnergy(f, df, rho, R, H, tol); };
@@ -333,20 +410,35 @@ int main(int argc, char** argv) {
         return abs(-4*sin(f(rho))*rho*integrator.integrate(mag,0,R,tol)+((rho==0)? 0.0 : 2*pi*H*(sin(f(rho))*cos(f(rho))/rho-df(rho)-ddf(rho)*rho)));
       };
 
-        std::cout << "MzatR: " << mz(R) << std::endl;
+        spdlog::info("MzatR: {0:.16f}" , mz(R) );
 //              Ikarus::plot::drawFunction(mz, {0, R}, 100);
         //      Ikarus::plot::drawFunction(magEFunc, {0, R}, 100);
         //      Ikarus::plot::drawFunction(exEFunc, {0, R}, 100);
 //              Ikarus::plot::drawFunction(RexE, {0, R}, 100);
         //    }
         std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-        std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()
-                  << "[µs]" << std::endl;
-        std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()
-                  << "[ns]" << std::endl;
-        std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::seconds>(end - begin).count()
-                  << "[s]" << std::endl;
+//        std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()
+//                  << "[µs]" << std::endl;
+//        spdlog::info("ime difference = {0:.16f} [µs]" , std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() );
+//        spdlog::info("ime difference = {0:.16f} [ns]" , std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() );
+        spdlog::info("Time difference = {} [s]" , std::chrono::duration_cast<std::chrono::seconds>(end - begin).count() );
+//        std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()
+//                  << "[ns]" << std::endl;
+//        std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::seconds>(end - begin).count()
+//                  << "[s]" << std::endl;
         //      std::cout<<results.transpose()<<std::endl;
+//        logger.flush();
+        if(exE<1e-16) {
+          spdlog::info("Early exit due to vanishing exchange energy."  );
+          terms=1;
+          break;
+        }
+
+        if(strongError<1e-12) {
+          spdlog::info("Early exit due to vanishing strongError."  );
+          break;
+        }
+
       }
       results(0, i * radii.size() + j) = R;
       results(1, i * radii.size() + j) = H;
@@ -354,9 +446,15 @@ int main(int argc, char** argv) {
       results(3, i * radii.size() + j) = exE;
       results(4, i * radii.size() + j) = magE;
       results(5, i * radii.size() + j) = strongError;
+      results(6, i * radii.size() + j) = terms;
+      const auto& curcols = results.leftCols(i * radii.size() + j+1).transpose();
+
+      spdlog::info("Result: {}",curcols.format(HeavyFmt)  );
+//      std::cout<<results.leftCols(i * radii.size() + j+1).transpose()<<std::endl;
+
     }
   }
-  results.transpose();
+
 
   //  integrator.reset();
   //  std::cout<<"IntVal: "<<integrator.integrate(f, 0, R, 1e-8)<<std::endl;
