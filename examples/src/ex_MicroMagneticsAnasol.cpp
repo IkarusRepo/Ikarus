@@ -216,20 +216,22 @@ auto energyIntegratorMag(F&& f, DF&& df, const double R, const double H, const d
 
 int main(int argc, char** argv) {
 
-  using Ansatz = FourierAnsatz;
-//  using Ansatz = PowerAnsatz;
+//  using Ansatz = FourierAnsatz;
+  using Ansatz = PowerAnsatz;
   std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-  Eigen::VectorXd radii(2);
-  Eigen::Matrix<double, 6, Eigen::Dynamic> results(6, radii.size() * radii.size());
+  Eigen::VectorXd radii(1);
+  Eigen::VectorXd heights(1);
+  Eigen::Matrix<double, 6, Eigen::Dynamic> results(6, radii.size() * heights.size());
 //      radii<<0.5, 1, 2,3,4,5,6,7,8,9,10;
-  radii << 0.5,8;
+  radii << 3;
+  heights << 7;
   double oldEnergy = 1;
   double newEnergy = 0;
   int terms0        = 1;
   int terms        = terms0;
 
   for (int i = 0; i < radii.size(); ++i) {
-    for (int j = 0; j < radii.size(); ++j) {
+    for (int j = 0; j < heights.size(); ++j) {
       terms        = terms0;
       Eigen::VectorXd xdOld(terms);
       for (int i = 0; i < xdOld.size(); ++i) {
@@ -240,10 +242,10 @@ int main(int argc, char** argv) {
       double R, H, magE, exE;
       oldEnergy=1;
       newEnergy = 0;
-      while (Dune::FloatCmp::gt(std::abs(oldEnergy - newEnergy), 1e-8)) {
+      while (Dune::FloatCmp::gt(std::abs(oldEnergy - newEnergy), 1e-6)) {
         ++terms;
-        R = radii[i];// * sqrt(2);
-        H = radii[j];// * sqrt(2);
+        R = radii[i] * sqrt(2);
+        H = heights[j] * sqrt(2);
         std::cout << "R: " << R << " H: " << H << std::endl;
         Eigen::VectorXd xd(terms);
         std::cout << xd.size() << " " << xdOld.size() << std::endl;
@@ -334,10 +336,10 @@ int main(int argc, char** argv) {
       };
 
         std::cout << "MzatR: " << mz(R) << std::endl;
-//              Ikarus::plot::drawFunction(mz, {0, R}, 100);
+              Ikarus::plot::drawFunction(mz, {0, R}, 100);
         //      Ikarus::plot::drawFunction(magEFunc, {0, R}, 100);
         //      Ikarus::plot::drawFunction(exEFunc, {0, R}, 100);
-//              Ikarus::plot::drawFunction(RexE, {0, R}, 100);
+              Ikarus::plot::drawFunction(RexE, {0, R}, 100);
         //    }
         std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
         std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()
