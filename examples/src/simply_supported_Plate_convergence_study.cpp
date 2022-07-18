@@ -58,7 +58,7 @@
 // 0 = Kirchhoff Plate Element (w)
 // 1 = Reissner-Mindlin Plate Element (w, thetax, thetay)
 
-#define eletype 1
+#define eletype 1 // Only implemented for Element Type 1
 
 using namespace Ikarus;
 using namespace Dune::Indices;
@@ -128,17 +128,6 @@ int main(int argc, char **argv) {
   Dune::FieldVector<double, 2> bbox = {L, L};
   std::array<int, 2> eles           = {elex, elex};
   auto grid                         = std::make_shared<Grid>(bbox, eles);
-  grid->globalRefine(refinement_level);
-  auto gridView = grid->leafGridView();
-
-  using namespace Dune::Functions::BasisFactory;
-
-  /// Create power basis
-  auto basis = makeBasis(gridView, power<3>(lagrange<2>(),FlatInterleaved()));
-
-  /// Fix complete boundary (simply supported plate) - Soft Support
-  std::vector<bool> dirichletFlags(basis.size(), false);
-  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0), [&](auto&& index) { dirichletFlags[index] = true; });
 
 //  /// Fix complete boundary (simply supported plate) - Hard Support
 //  std::vector<bool> dirichletFlags(basis.size(), false);
@@ -152,7 +141,6 @@ int main(int argc, char **argv) {
 //      dirichletFlags[localView.index(localIndex)] = true;
 //  });
 
-
   // Function for distributed load
   auto volumeLoad = [](auto& lamb) {
     Eigen::Vector<double, 3> fext;
@@ -161,131 +149,168 @@ int main(int argc, char **argv) {
     return fext;
   };
 
-  /// Create finite elements
-  std::vector<ReissnerMindlinPlate<decltype(basis)>> fes;
-  for (auto& ele : elements(gridView)) {
-    fes.emplace_back(basis , ele , Emod, nu, thickness, volumeLoad);
-  }
+  std::vector<double> dofsVec;
+  std::vector<double> wfevector;
+  std::vector<double> wanavector;
 
   std::string output_file = "Simply_Supported_Reissner_Mindlin_Plate";
 #endif
 
-  std::cout<<"#################################################"<<std::endl;
-  std::cout << "This gridview contains: " << std::endl;
-  std::cout << gridView.size(2) << " vertices" << std::endl;
-  std::cout << gridView.size(1) << " edges" << std::endl;
-  std::cout << gridView.size(0) << " elements" << std::endl;
-  std::cout << basis.size() << " Dofs" << std::endl;
+  for (size_t rl = 0; rl<=refinement_level; ++rl) {
+    auto gridView = grid->leafGridView();
 
-  /// Create assembler
-  auto denseAssembler = DenseFlatAssembler(basis, fes, dirichletFlags);
+    using namespace Dune::Functions::BasisFactory;
 
-  Eigen::VectorXd w;
-  w.setZero(basis.size());
+    /// Create power basis
+    auto basis = makeBasis(gridView, power<3>(lagrange<2>(), FlatInterleaved()));
 
-  const double qz = 1.0*thickness*thickness*thickness;
+    /// Fix complete boundary (simply supported plate) - Soft Support
+    std::vector<bool> dirichletFlags(basis.size(), false);
+    Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0),
+                                        [&](auto&& index) { dirichletFlags[index] = true; });
 
-  auto kFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
-    Ikarus::FErequirements req = FErequirementsBuilder()
-                                     .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
-                                     .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
-                                     .addAffordance(Ikarus::MatrixAffordances::stiffness)
-                                     .build();
-    return denseAssembler.getMatrix(req);
-  };
+    /// Create finite elements
+    std::vector<ReissnerMindlinPlate<decltype(basis)>> fes;
+    for (auto& ele : elements(gridView)) {
+      fes.emplace_back(basis, ele, Emod, nu, thickness, volumeLoad);
+    }
 
-  auto rFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
-    Ikarus::FErequirements req = FErequirementsBuilder()
-                                     .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
-                                     .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
-                                     .addAffordance(Ikarus::VectorAffordances::forces)
-                                     .build();
-    return denseAssembler.getVector(req);
-  };
+    std::cout << "#################################################" << std::endl;
+    std::cout << "This gridview contains: " << std::endl;
+    std::cout << gridView.size(2) << " vertices" << std::endl;
+    std::cout << gridView.size(1) << " edges" << std::endl;
+    std::cout << gridView.size(0) << " elements" << std::endl;
+    std::cout << basis.size() << " Dofs" << std::endl;
+    std::cout<<"Refinement Level: "<<rl<<std::endl;
 
-  const auto& K = kFunction(w, qz);
-  const auto& R = rFunction(w, qz);
+    /// Create assembler
+    auto denseAssembler = DenseFlatAssembler(basis, fes, dirichletFlags);
 
-  Eigen::LDLT<Eigen::MatrixXd> solver;
-  solver.compute(K);
-  w -= solver.solve(R);
+    Eigen::VectorXd w;
+    w.setZero(basis.size());
+
+    const double qz = 1.0 * thickness * thickness * thickness;
+
+    auto kFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
+      Ikarus::FErequirements req = FErequirementsBuilder()
+                                       .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
+                                       .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
+                                       .addAffordance(Ikarus::MatrixAffordances::stiffness)
+                                       .build();
+      return denseAssembler.getMatrix(req);
+    };
+
+    auto rFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
+      Ikarus::FErequirements req = FErequirementsBuilder()
+                                       .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
+                                       .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
+                                       .addAffordance(Ikarus::VectorAffordances::forces)
+                                       .build();
+      return denseAssembler.getVector(req);
+    };
+
+    const auto& K = kFunction(w, qz);
+    const auto& R = rFunction(w, qz);
+
+    Eigen::LDLT<Eigen::MatrixXd> solver;
+    solver.compute(K);
+    w -= solver.solve(R);
 
 #if eletype == 0
-  auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
+    auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
 #endif
 
 #if eletype == 1
-  auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(subspaceBasis(basis, _0), w);
+    auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(subspaceBasis(basis, _0), w);
 
-  auto resultRequirements
-      = Ikarus::ResultRequirementsBuilder<Eigen::VectorXd>()
-            .insertGlobalSolution(Ikarus::FESolutions::displacement, w)
-            .insertParameter(Ikarus::FEParameter::loadfactor, qz)
-            .addResultRequest(ResultType::stressResultant)
-            .build();
+    auto resultRequirements = Ikarus::ResultRequirementsBuilder<Eigen::VectorXd>()
+                                  .insertGlobalSolution(Ikarus::FESolutions::displacement, w)
+                                  .insertParameter(Ikarus::FEParameter::loadfactor, qz)
+                                  .addResultRequest(ResultType::stressResultant)
+                                  .build();
 
-  ResultTypeMap<double> result;
-  auto scalarBasis     = makeBasis(gridView, lagrange<2>());
-  auto localScalarview = scalarBasis.localView();
-  std::vector<Dune::FieldMatrix<double,3, 3>> stressRes(scalarBasis.size());
-  std::vector<Dune::FieldVector<double,3>> stressResVector(scalarBasis.size());
-  auto ele = elements(gridView).begin();
+    ResultTypeMap<double> result;
+    auto scalarBasis     = makeBasis(gridView, lagrange<2>());
+    auto localScalarview = scalarBasis.localView();
+    std::vector<Dune::FieldVector<double, 3>> stressRes(scalarBasis.size());
+    auto ele = elements(gridView).begin();
 
-  for (auto &fe : fes) {
-    localScalarview.bind(*ele);
-    const auto &fe2              = localScalarview.tree().finiteElement();
-    const auto &referenceElement = Dune::ReferenceElements<double, griddim>::general(ele->type());
-    for (auto c = 0UL; c < fe2.size(); ++c) {
-      const auto fineKey                        = fe2.localCoefficients().localKey(c);
-      const auto nodalPositionInChildCoordinate = referenceElement.position(fineKey.subEntity(), fineKey.codim());
-      auto coord = toEigenVector(nodalPositionInChildCoordinate);
-      fe.calculateAt(resultRequirements, coord, result);
-      auto resVector = toFieldMatrix(result.getResult(ResultType::stressResultant));
-//      stressRes[localScalarview.index(localScalarview.tree().localIndex(c))[0]] = toFieldMatrix(result.getResult(ResultType::stressResultant));
-      stressResVector[localScalarview.index(localScalarview.tree().localIndex(c))[0]][0] = resVector[0][1];
-      stressResVector[localScalarview.index(localScalarview.tree().localIndex(c))[0]][1] = resVector[0][2];
-      stressResVector[localScalarview.index(localScalarview.tree().localIndex(c))[0]][2] = resVector[1][2];
+    for (auto& fe : fes) {
+      localScalarview.bind(*ele);
+      const auto& fe2              = localScalarview.tree().finiteElement();
+      const auto& referenceElement = Dune::ReferenceElements<double, griddim>::general(ele->type());
+      for (auto c = 0UL; c < fe2.size(); ++c) {
+        const auto fineKey                        = fe2.localCoefficients().localKey(c);
+        const auto nodalPositionInChildCoordinate = referenceElement.position(fineKey.subEntity(), fineKey.codim());
+        auto coord                                = toEigenVector(nodalPositionInChildCoordinate);
+        fe.calculateAt(resultRequirements, coord, result);
+        stressRes[localScalarview.index(localScalarview.tree().localIndex(c))[0]]
+            = toFieldVector(result.getResult(ResultType::stressResultant));
+      }
+      ++ele;
     }
-    ++ele;
-  }
-  auto stressResGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 3>>(
-      scalarBasis, stressResVector);
+    auto stressResGlobalFunc
+        = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 3>>(scalarBasis, stressRes);
 #endif
 
-  // Output solution to vtk
-  Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(0));
-  vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
-  vtkWriter.addVertexData(stressResGlobalFunc, Dune::VTK::FieldInfo("stressRes", Dune::VTK::FieldInfo::Type::vector, 3));
-  vtkWriter.write(output_file);
+    // Output solution to vtk
+    Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(0));
+    vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
+    vtkWriter.addVertexData(stressResGlobalFunc,
+                            Dune::VTK::FieldInfo("stressRes", Dune::VTK::FieldInfo::Type::vector, 3));
+    vtkWriter.write(output_file);
 
-  /// Create analytical solution function for the simply supported case
-  const double pi         = std::numbers::pi;
-  const double factor_ana = (qz * Dune::power(L,4) * 12.0 * (1.0 - nu*nu))/(Emod * Dune::power(thickness,3));
-  const double w_max_ana = ((5.0/384.0) - (4.0/Dune::power(pi,5)) * (0.68562 + 0.00025)) * factor_ana;
+    /// Create analytical solution function for the simply supported case
+    const double pi         = std::numbers::pi;
+    const double factor_ana = (qz * Dune::power(L, 4) * 12.0 * (1.0 - nu * nu)) / (Emod * Dune::power(thickness, 3));
+    const double w_max_ana  = ((5.0 / 384.0) - (4.0 / Dune::power(pi, 5)) * (0.68562 + 0.00025)) * factor_ana;
 
-  /// Find displacement w at the center of the plate (x=y=5.0=Lmid)
-//  auto wGlobalFunction = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 1>>(subspaceBasis(basis, _0), w);
-  auto localView = basis.localView();
-  auto localw          = localFunction(wGlobalFunc);
-  double w_fe = 0.0;
-  const double Lmid = L/2.0;
-  Eigen::Vector2d c_pos;
-  c_pos[0] = c_pos[1] = Lmid;
+    /// Find displacement w at the center of the plate (x=y=5.0=Lmid)
+    //  auto wGlobalFunction = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 1>>(subspaceBasis(basis, _0), w);
+    auto localView    = basis.localView();
+    auto localw       = localFunction(wGlobalFunc);
+    double w_fe       = 0.0;
+    const double Lmid = L / 2.0;
+    Eigen::Vector2d c_pos;
+    c_pos[0] = c_pos[1] = Lmid;
 
-  for (auto& ele : elements(gridView)) {
-    localView.bind(ele);
-    localw.bind(ele);
-    const auto geo   = localView.element().geometry();
-    if (((geo.corner(0)[0] <= Lmid) and (Lmid <= geo.corner(1)[0])) and ((geo.corner(0)[1] <= Lmid) and (Lmid <= geo.corner(2)[1])))
-    {
+    for (auto& ele : elements(gridView)) {
+      localView.bind(ele);
+      localw.bind(ele);
+      const auto geo = localView.element().geometry();
+      if (((geo.corner(0)[0] <= Lmid) and (Lmid <= geo.corner(1)[0]))
+          and ((geo.corner(0)[1] <= Lmid) and (Lmid <= geo.corner(2)[1]))) {
         const auto local_pos = geo.local(toFieldVector(c_pos));
-        w_fe = localw(local_pos);
+        w_fe                 = localw(local_pos);
+      }
     }
+    std::cout << "#################################################";
+    std::cout << std::endl << "w_max_ana: " << w_max_ana << std::endl << "w_fe     : " << w_fe << std::endl;
+    std::cout << "The error is:" << sqrt(Dune::power((w_max_ana - w_fe), 2)) << std::endl;
+    std::cout << "#################################################"<<std::endl;
+
+    dofsVec.push_back(basis.size());
+    wfevector.push_back(w_fe);
+    wanavector.push_back(w_max_ana);
+    grid->globalRefine(1);
   }
-  std::cout<<"#################################################";
-  std::cout<<std::endl<<"w_max_ana: " << w_max_ana << std::endl<<"w_fe     : " << w_fe << std::endl;
-  std::cout<<"The error is:"<<sqrt(Dune::power((w_max_ana-w_fe),2))<<std::endl;
-  std::cout<<"#################################################";
+
+  /// Draw w_max over dofs count
+  using namespace matplot;
+  auto f  = figure(true);
+  auto ax = gca();
+
+  ax->y_axis().label("w_{max}");
+  ax->x_axis().label("#Dofs");
+
+  auto p = ax->semilogx(dofsVec, wfevector, dofsVec, wanavector);
+
+  p[0]->line_width(2);
+  p[1]->line_width(2);
+
+  p[0]->marker(line_spec::marker_style::asterisk);
+  p[1]->marker(line_spec::marker_style::square);
+  show();
 }
 
 

@@ -234,13 +234,16 @@ namespace Ikarus {
       req_res.setZero();
       req_res = D * bop * local_disp;
 
-      Eigen::Vector<double, 3> sent_res;
-      for (int i=0; i<3; i++)
-        sent_res[i] = req_res[i+2];
+      Eigen::Matrix<double, 3, 3> sent_res;
+      sent_res(0, 0) = req_res[0];
+      sent_res(1, 1) = req_res[1];
+      sent_res(0, 1) = sent_res(1, 0) = req_res[2];
+      sent_res(0, 2) = sent_res(2, 0) = req_res[3];
+      sent_res(1, 2) = sent_res(2, 1) = req_res[4];
 
       typename ResultTypeMap<double>::ResultArray resv;
       if (req.isResultRequested(ResultType::stressResultant)) {
-//        resv.resize(5, 1);
+        resv.resize(3, 3);
         resv = sent_res;
         result.insertOrAssignResult(ResultType::stressResultant, resv);
       }
