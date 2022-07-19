@@ -21,28 +21,34 @@
 // *
 
 #include <config.h>
+
 #include <vector>
+
+#include <dune/common/parametertreeparser.hh>
 #include <dune/functions/functionspacebases/boundarydofs.hh>
-#include <dune/functions/functionspacebases/subspacebasis.hh>
-#include <dune/functions/functionspacebases/powerbasis.hh>
 #include <dune/functions/functionspacebases/compositebasis.hh>
 #include <dune/functions/functionspacebases/interpolate.hh>
 #include <dune/functions/functionspacebases/lagrangebasis.hh>
+#include <dune/functions/functionspacebases/lagrangedgbasis.hh>
+#include <dune/functions/functionspacebases/powerbasis.hh>
+#include <dune/functions/functionspacebases/subspacebasis.hh>
+#include <dune/grid/yaspgrid.hh>
 #include <dune/iga/igaalgorithms.hh>
 #include <dune/iga/nurbsgrid.hh>
-#include <dune/grid/yaspgrid.hh>
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
 #include <ikarus/assembler/simpleAssemblers.hh>
+#include <ikarus/finiteElements/mechanics/ReissnerMindlinPlate.hh>
+#include <ikarus/finiteElements/mechanics/kirchhoffPlate.hh>
 #include <ikarus/linearAlgebra/nonLinearOperator.hh>
 #include <ikarus/localBasis/localBasis.hh>
 #include <ikarus/utils/drawing/griddrawer.hh>
 #include <ikarus/utils/eigenDuneTransformations.hh>
 #include <ikarus/utils/observer/controlVTKWriter.hh>
-#include <ikarus/finiteElements/mechanics/kirchhoffPlate.hh>
-#include <ikarus/finiteElements/mechanics/ReissnerMindlinPlate.hh>
+#include <ikarus/solver/linearSolver/linearSolver.hh>
+
 
 // References:
 // [1] Echter, R., Oesterle, B., Bischoff, M., 2013. A hierarchic family of isogeometric shell finite elements.
@@ -53,7 +59,6 @@
 // Computer Methods in Applied Mechanics and Engineering 307, 235–255. https://doi.org/10.1016/j.cma.2016.04.015
 // Section 5.1
 
-
 // Element types (eletype):
 // 0 = Kirchhoff Plate Element (w)
 // 1 = Reissner-Mindlin Plate Element (w, thetax, thetay)
@@ -63,17 +68,25 @@
 using namespace Ikarus;
 using namespace Dune::Indices;
 
-int main(int argc, char **argv) {
-
+int main(int argc, char** argv) {
   Dune::MPIHelper::instance(argc, argv);
-  constexpr int griddim     = 2;
-  constexpr int dimworld    = 2;
+  constexpr int griddim  = 2;
+  constexpr int dimworld = 2;
+  constexpr int order    = 1;
 
-  const double L = 10.0;
-  const double Emod      = 1000;
-  const double nu        = 0.3;
-  const double thickness = 0.001;
-  const int refinement_level = 3;
+  /// read in parameters
+  Dune::ParameterTree parameterSet;
+  Dune::ParameterTreeParser::readINITree(argv[1], parameterSet);
+
+  const Dune::ParameterTree& gridParameters     = parameterSet.sub("GridParameters");
+  const Dune::ParameterTree& controlParameters  = parameterSet.sub("ControlParameters");
+  const Dune::ParameterTree& materialParameters = parameterSet.sub("MaterialParameters");
+
+  const double L             = gridParameters.get<double>("L");
+  const double Emod          = materialParameters.get<double>("E");
+  const double nu            = materialParameters.get<double>("nu");
+  const double thickness     = materialParameters.get<double>("thickness");
+  const int refinement_level = gridParameters.get<int>("refinement");
 
 #if eletype == 0
   /// Create 2D nurbs grid
@@ -114,7 +127,7 @@ int main(int argc, char **argv) {
   /// Create finite elements
   std::vector<KirchhoffPlate<decltype(basis)>> fes;
   for (auto& ele : elements(gridView)) {
-    fes.emplace_back(basis , ele , Emod, nu, thickness);
+    fes.emplace_back(basis, ele, Emod, nu, thickness);
   }
 
   std::string output_file = "Simply_Supported_Kirchhoff_Plate";
@@ -134,24 +147,28 @@ int main(int argc, char **argv) {
   using namespace Dune::Functions::BasisFactory;
 
   /// Create power basis
-  auto basis = makeBasis(gridView, power<3>(lagrange<2>(),FlatInterleaved()));
+  auto basis = makeBasis(gridView, power<3>(lagrange<order>(), FlatInterleaved()));
 
   /// Fix complete boundary (simply supported plate) - Soft Support
   std::vector<bool> dirichletFlags(basis.size(), false);
-  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0), [&](auto&& index) { dirichletFlags[index] = true; });
+  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0),
+                                      [&](auto&& index) { dirichletFlags[index] = true; });
 
-//  /// Fix complete boundary (simply supported plate) - Hard Support
-//  std::vector<bool> dirichletFlags(basis.size(), false);
-//  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0), [&](auto&& index) { dirichletFlags[index] = true; });
-//  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _1), [&](auto &&localIndex, auto &&localView, auto &&intersection) {
-//    if ((std::abs(intersection.geometry().center()[0]) < 1e-8) or (std::abs(intersection.geometry().center()[0]-L) < 1e-8))
-//      dirichletFlags[localView.index(localIndex)] = true;
-//  });
-//  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _2), [&](auto &&localIndex, auto &&localView, auto &&intersection) {
-//    if ((std::abs(intersection.geometry().center()[1]) < 1e-8) or (std::abs(intersection.geometry().center()[1]-L) < 1e-8))
-//      dirichletFlags[localView.index(localIndex)] = true;
-//  });
-
+  //  /// Fix complete boundary (simply supported plate) - Hard Support
+  //  std::vector<bool> dirichletFlags(basis.size(), false);
+  //  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0), [&](auto&& index) {
+  //  dirichletFlags[index] = true; }); Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _1),
+  //  [&](auto &&localIndex, auto &&localView, auto &&intersection) {
+  //    if ((std::abs(intersection.geometry().center()[0]) < 1e-8) or (std::abs(intersection.geometry().center()[0]-L) <
+  //    1e-8))
+  //      dirichletFlags[localView.index(localIndex)] = true;
+  //  });
+  //  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _2), [&](auto &&localIndex, auto
+  //  &&localView, auto &&intersection) {
+  //    if ((std::abs(intersection.geometry().center()[1]) < 1e-8) or (std::abs(intersection.geometry().center()[1]-L) <
+  //    1e-8))
+  //      dirichletFlags[localView.index(localIndex)] = true;
+  //  });
 
   // Function for distributed load
   auto volumeLoad = [](auto& lamb) {
@@ -164,13 +181,13 @@ int main(int argc, char **argv) {
   /// Create finite elements
   std::vector<ReissnerMindlinPlate<decltype(basis)>> fes;
   for (auto& ele : elements(gridView)) {
-    fes.emplace_back(basis , ele , Emod, nu, thickness, volumeLoad);
+    fes.emplace_back(basis, ele, Emod, nu, thickness, volumeLoad);
   }
 
   std::string output_file = "Simply_Supported_Reissner_Mindlin_Plate";
 #endif
 
-  std::cout<<"#################################################"<<std::endl;
+  std::cout << "#################################################" << std::endl;
   std::cout << "This gridview contains: " << std::endl;
   std::cout << gridView.size(2) << " vertices" << std::endl;
   std::cout << gridView.size(1) << " edges" << std::endl;
@@ -178,12 +195,12 @@ int main(int argc, char **argv) {
   std::cout << basis.size() << " Dofs" << std::endl;
 
   /// Create assembler
-  auto denseAssembler = DenseFlatAssembler(basis, fes, dirichletFlags);
+  auto denseAssembler = SparseFlatAssembler(basis, fes, dirichletFlags);
 
   Eigen::VectorXd w;
   w.setZero(basis.size());
 
-  const double qz = 1.0*thickness*thickness*thickness;
+  const double qz = 1.0 * thickness * thickness * thickness;
 
   auto kFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
     Ikarus::FErequirements req = FErequirementsBuilder()
@@ -206,9 +223,14 @@ int main(int argc, char **argv) {
   const auto& K = kFunction(w, qz);
   const auto& R = rFunction(w, qz);
 
-  Eigen::LDLT<Eigen::MatrixXd> solver;
-  solver.compute(K);
-  w -= solver.solve(R);
+//  Eigen::LDLT<Eigen::MatrixXd> solver;
+//  solver.compute(K);
+//  w -= solver.solve(R);
+
+  auto linSolver = Ikarus::ILinearSolver<double>(Ikarus::SolverTypeTag::sd_SimplicialLDLT);
+  linSolver.compute(K);
+  linSolver.solve(w, -R);
+
 
 #if eletype == 0
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
@@ -217,77 +239,78 @@ int main(int argc, char **argv) {
 #if eletype == 1
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(subspaceBasis(basis, _0), w);
 
-  auto resultRequirements
-      = Ikarus::ResultRequirementsBuilder<Eigen::VectorXd>()
-            .insertGlobalSolution(Ikarus::FESolutions::displacement, w)
-            .insertParameter(Ikarus::FEParameter::loadfactor, qz)
-            .addResultRequest(ResultType::stressResultant)
-            .build();
+  auto resultRequirements = Ikarus::ResultRequirementsBuilder<Eigen::VectorXd>()
+                                .insertGlobalSolution(Ikarus::FESolutions::displacement, w)
+                                .insertParameter(Ikarus::FEParameter::loadfactor, qz)
+                                .addResultRequest(ResultType::stressResultant)
+                                .build();
 
   ResultTypeMap<double> result;
-  auto scalarBasis     = makeBasis(gridView, lagrange<2>());
+  auto scalarBasis     = makeBasis(gridView, lagrangeDG<order>());
   auto localScalarview = scalarBasis.localView();
-  std::vector<Dune::FieldMatrix<double,3, 3>> stressRes(scalarBasis.size());
-  std::vector<Dune::FieldVector<double,3>> stressResVector(scalarBasis.size());
+  std::vector<Dune::FieldMatrix<double, 3, 3>> stressRes(scalarBasis.size());
+  std::vector<Dune::FieldVector<double, 3>> stressResVector(scalarBasis.size());
   auto ele = elements(gridView).begin();
 
-  for (auto &fe : fes) {
+  for (auto& fe : fes) {
     localScalarview.bind(*ele);
-    const auto &fe2              = localScalarview.tree().finiteElement();
-    const auto &referenceElement = Dune::ReferenceElements<double, griddim>::general(ele->type());
+    const auto& fe2              = localScalarview.tree().finiteElement();
+    const auto& referenceElement = Dune::ReferenceElements<double, griddim>::general(ele->type());
     for (auto c = 0UL; c < fe2.size(); ++c) {
       const auto fineKey                        = fe2.localCoefficients().localKey(c);
       const auto nodalPositionInChildCoordinate = referenceElement.position(fineKey.subEntity(), fineKey.codim());
-      auto coord = toEigenVector(nodalPositionInChildCoordinate);
+      auto coord                                = toEigenVector(nodalPositionInChildCoordinate);
       fe.calculateAt(resultRequirements, coord, result);
       auto resVector = toFieldMatrix(result.getResult(ResultType::stressResultant));
-//      stressRes[localScalarview.index(localScalarview.tree().localIndex(c))[0]] = toFieldMatrix(result.getResult(ResultType::stressResultant));
+      //      stressRes[localScalarview.index(localScalarview.tree().localIndex(c))[0]] =
+      //      toFieldMatrix(result.getResult(ResultType::stressResultant));
       stressResVector[localScalarview.index(localScalarview.tree().localIndex(c))[0]][0] = resVector[0][1];
       stressResVector[localScalarview.index(localScalarview.tree().localIndex(c))[0]][1] = resVector[0][2];
       stressResVector[localScalarview.index(localScalarview.tree().localIndex(c))[0]][2] = resVector[1][2];
     }
     ++ele;
   }
-  auto stressResGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 3>>(
-      scalarBasis, stressResVector);
+  auto stressResGlobalFunc
+      = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 3>>(scalarBasis, stressResVector);
 #endif
 
   // Output solution to vtk
-  Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(0));
+  Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(0), Dune::VTK::nonconforming);
   vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
-  vtkWriter.addVertexData(stressResGlobalFunc, Dune::VTK::FieldInfo("stressRes", Dune::VTK::FieldInfo::Type::vector, 3));
+  vtkWriter.addVertexData(stressResGlobalFunc,
+                          Dune::VTK::FieldInfo("stressRes", Dune::VTK::FieldInfo::Type::vector, 3));
   vtkWriter.write(output_file);
 
   /// Create analytical solution function for the simply supported case
   const double pi         = std::numbers::pi;
-  const double factor_ana = (qz * Dune::power(L,4) * 12.0 * (1.0 - nu*nu))/(Emod * Dune::power(thickness,3));
-  const double w_max_ana = ((5.0/384.0) - (4.0/Dune::power(pi,5)) * (0.68562 + 0.00025)) * factor_ana;
+  const double factor_ana = (qz * Dune::power(L, 4) * 12.0 * (1.0 - nu * nu)) / (Emod * Dune::power(thickness, 3));
+  const double w_max_ana  = ((5.0 / 384.0) - (4.0 / Dune::power(pi, 5)) * (0.68562 + 0.00025)) * factor_ana;
 
   /// Find displacement w at the center of the plate (x=y=5.0=Lmid)
-//  auto wGlobalFunction = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 1>>(subspaceBasis(basis, _0), w);
-  auto localView = basis.localView();
-  auto localw          = localFunction(wGlobalFunc);
-  double w_fe = 0.0;
-  const double Lmid = L/2.0;
+  //  auto wGlobalFunction = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double,
+  //  1>>(subspaceBasis(basis, _0), w);
+  auto localView    = basis.localView();
+  auto localw       = localFunction(wGlobalFunc);
+  double w_fe       = 0.0;
+  const double Lmid = L / 2.0;
   Eigen::Vector2d c_pos;
   c_pos[0] = c_pos[1] = Lmid;
 
   for (auto& ele : elements(gridView)) {
     localView.bind(ele);
     localw.bind(ele);
-    const auto geo   = localView.element().geometry();
-    if (((geo.corner(0)[0] <= Lmid) and (Lmid <= geo.corner(1)[0])) and ((geo.corner(0)[1] <= Lmid) and (Lmid <= geo.corner(2)[1])))
-    {
-        const auto local_pos = geo.local(toFieldVector(c_pos));
-        w_fe = localw(local_pos);
+    const auto geo = localView.element().geometry();
+    if (((geo.corner(0)[0] <= Lmid) and (Lmid <= geo.corner(1)[0]))
+        and ((geo.corner(0)[1] <= Lmid) and (Lmid <= geo.corner(2)[1]))) {
+      const auto local_pos = geo.local(toFieldVector(c_pos));
+      w_fe                 = localw(local_pos);
     }
   }
-  std::cout<<"#################################################";
-  std::cout<<std::endl<<"w_max_ana: " << w_max_ana << std::endl<<"w_fe     : " << w_fe << std::endl;
-  std::cout<<"The error is:"<<sqrt(Dune::power((w_max_ana-w_fe),2))<<std::endl;
-  std::cout<<"#################################################";
+  std::cout << "#################################################";
+  std::cout << std::endl << "w_max_ana: " << w_max_ana << std::endl << "w_fe     : " << w_fe << std::endl;
+  std::cout << "The error is:" << sqrt(Dune::power((w_max_ana - w_fe), 2)) << std::endl;
+  std::cout << "#################################################";
 }
-
 
 //  ################################################################
 //  ###### With Automatic Differentiation for Kirchhoff Plate ######
