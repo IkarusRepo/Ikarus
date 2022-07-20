@@ -135,20 +135,48 @@ int main(int argc, char** argv) {
 #endif
 
 #if eletype == 1
-  /// Creating YaspGrid
-  using Grid        = Dune::YaspGrid<griddim>;
-  const size_t elex = 1;
+//  /// Creating YaspGrid
+//  using Grid        = Dune::YaspGrid<griddim>;
+//  const size_t elex = 1;
+//
+//  Dune::FieldVector<double, 2> bbox = {L, L};
+//  std::array<int, 2> eles           = {elex, elex};
+//  auto grid                         = std::make_shared<Grid>(bbox, eles);
 
-  Dune::FieldVector<double, 2> bbox = {L, L};
-  std::array<int, 2> eles           = {elex, elex};
-  auto grid                         = std::make_shared<Grid>(bbox, eles);
+  /// Create 2D nurbs grid
+  const std::array<std::vector<double>, griddim> knotSpans = {{{0, 0, 1, 1}, {0, 0, 1, 1}}};
+
+  using ControlPoint = Dune::IGA::NURBSPatchData<griddim, dimworld>::ControlPointType;
+
+  const std::vector<std::vector<ControlPoint>> controlPoints
+      = {{{.p = {0, 0}, .w = 1}, {.p = {0, L}, .w = 1}}, {{.p = {L, 0}, .w = 1}, {.p = {L, L}, .w = 1}}};
+
+  std::array<int, griddim> dimsize = {2, 2};
+
+  std::vector<double> dofsVec;
+  std::vector<double> l2Evector;
+  auto controlNet = Dune::IGA::NURBSPatchData<griddim, dimworld>::ControlPointNetType(dimsize, controlPoints);
+  using Grid      = Dune::IGA::NURBSGrid<griddim, dimworld>;
+
+  Dune::IGA::NURBSPatchData<griddim, dimworld> patchData;
+  patchData.knotSpans     = knotSpans;
+  patchData.degree        = {1, 1};
+  patchData.controlPoints = controlNet;
+
+  /// Increase polynomial degree in each direction
+  patchData = Dune::IGA::degreeElevate(patchData, 0, 1);
+  patchData = Dune::IGA::degreeElevate(patchData, 1, 1);
+  auto grid = std::make_shared<Grid>(patchData);
+
+
   grid->globalRefine(refinement_level);
   auto gridView = grid->leafGridView();
 
   using namespace Dune::Functions::BasisFactory;
 
   /// Create power basis
-  auto basis = makeBasis(gridView, power<3>(lagrange<order>(), FlatInterleaved()));
+//  auto basis = makeBasis(gridView, power<3>(lagrange<order>(), FlatInterleaved()));
+  auto basis = makeBasis(gridView, power<3>(gridView.getPreBasis(), FlatInterleaved()));
 
   /// Fix complete boundary (simply supported plate) - Soft Support
   std::vector<bool> dirichletFlags(basis.size(), false);
@@ -276,7 +304,7 @@ int main(int argc, char** argv) {
 #endif
 
   // Output solution to vtk
-  Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(plot_refinement_level), Dune::VTK::nonconforming);
+  Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(plot_refinement_level), Dune::VTK::conforming);
   vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
   vtkWriter.addVertexData(stressResGlobalFunc,
                           Dune::VTK::FieldInfo("stressRes", Dune::VTK::FieldInfo::Type::vector, 3));
