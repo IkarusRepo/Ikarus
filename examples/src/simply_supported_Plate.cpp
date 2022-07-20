@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
   Dune::MPIHelper::instance(argc, argv);
   constexpr int griddim  = 2;
   constexpr int dimworld = 2;
-  constexpr int order    = 1;
+  constexpr int order = 2;
 
   /// read in parameters
   Dune::ParameterTree parameterSet;
@@ -87,6 +87,7 @@ int main(int argc, char** argv) {
   const double nu            = materialParameters.get<double>("nu");
   const double thickness     = materialParameters.get<double>("thickness");
   const int refinement_level = gridParameters.get<int>("refinement");
+  const int plot_refinement_level = gridParameters.get<int>("plot_refinement");
 
 #if eletype == 0
   /// Create 2D nurbs grid
@@ -275,7 +276,7 @@ int main(int argc, char** argv) {
 #endif
 
   // Output solution to vtk
-  Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(0), Dune::VTK::nonconforming);
+  Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(plot_refinement_level), Dune::VTK::nonconforming);
   vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
   vtkWriter.addVertexData(stressResGlobalFunc,
                           Dune::VTK::FieldInfo("stressRes", Dune::VTK::FieldInfo::Type::vector, 3));

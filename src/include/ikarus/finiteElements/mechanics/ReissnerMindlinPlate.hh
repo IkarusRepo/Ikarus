@@ -46,10 +46,10 @@
 namespace Ikarus {
 
   template <typename Basis>
-  class ReissnerMindlinPlate : public powerBasisFE<Basis>{
+  class ReissnerMindlinPlate : public PowerBasisFE<Basis>{
   public:
-    using BaseDisp = powerBasisFE<Basis>;  // Handles globalIndices function
-    using GlobalIndex = typename powerBasisFE<Basis>::GlobalIndex;
+    using BaseDisp = PowerBasisFE<Basis>;  // Handles globalIndices function
+    using GlobalIndex = typename PowerBasisFE<Basis>::GlobalIndex;
     using FERequirementType = FErequirements<Eigen::VectorXd>;
     using ResultRequirementsType = ResultRequirements<Eigen::VectorXd>;
     using LocalView         = typename Basis::LocalView;
