@@ -42,6 +42,7 @@
 #include <ikarus/assembler/simpleAssemblers.hh>
 #include <ikarus/finiteElements/mechanics/ReissnerMindlinPlate.hh>
 #include <ikarus/finiteElements/mechanics/kirchhoffPlate.hh>
+#include <ikarus//finiteElements/mechanics/ReissnerMindlinHierarchicRotations.hh>
 #include <ikarus/linearAlgebra/nonLinearOperator.hh>
 #include <ikarus/localBasis/localBasis.hh>
 #include <ikarus/utils/drawing/griddrawer.hh>
@@ -62,8 +63,9 @@
 // Element types (eletype):
 // 0 = Kirchhoff Plate Element (w)
 // 1 = Reissner-Mindlin Plate Element (w, thetax, thetay)
+// 2 = Reissner-Mindlin Plate Element with Hierarchic Rotations (w, gammaxz, gammayz)
 
-#define eletype 1
+#define eletype 2
 
 using namespace Ikarus;
 using namespace Dune::Indices;
@@ -216,6 +218,77 @@ int main(int argc, char** argv) {
   std::string output_file = "Simply_Supported_Reissner_Mindlin_Plate";
 #endif
 
+#if eletype == 2
+  /// Create 2D nurbs grid
+  const std::array<std::vector<double>, griddim> knotSpans = {{{0, 0, 1, 1}, {0, 0, 1, 1}}};
+
+  using ControlPoint = Dune::IGA::NURBSPatchData<griddim, dimworld>::ControlPointType;
+
+  const std::vector<std::vector<ControlPoint>> controlPoints
+      = {{{.p = {0, 0}, .w = 1}, {.p = {0, L}, .w = 1}}, {{.p = {L, 0}, .w = 1}, {.p = {L, L}, .w = 1}}};
+
+  std::array<int, griddim> dimsize = {2, 2};
+
+  std::vector<double> dofsVec;
+  std::vector<double> l2Evector;
+  auto controlNet = Dune::IGA::NURBSPatchData<griddim, dimworld>::ControlPointNetType(dimsize, controlPoints);
+  using Grid      = Dune::IGA::NURBSGrid<griddim, dimworld>;
+
+  Dune::IGA::NURBSPatchData<griddim, dimworld> patchData;
+  patchData.knotSpans     = knotSpans;
+  patchData.degree        = {1, 1};
+  patchData.controlPoints = controlNet;
+
+  /// Increase polynomial degree in each direction
+  patchData = Dune::IGA::degreeElevate(patchData, 0, 1);
+  patchData = Dune::IGA::degreeElevate(patchData, 1, 1);
+  auto grid = std::make_shared<Grid>(patchData);
+
+
+  grid->globalRefine(refinement_level);
+  auto gridView = grid->leafGridView();
+
+  using namespace Dune::Functions::BasisFactory;
+
+  /// Create power basis
+  auto basis = makeBasis(gridView, power<3>(gridView.getPreBasis(), FlatInterleaved()));
+
+  /// Fix complete boundary (simply supported plate) - Soft Support
+  std::vector<bool> dirichletFlags(basis.size(), false);
+  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0),
+                                      [&](auto&& index) { dirichletFlags[index] = true; });
+
+//  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _1),
+//                                      [&](auto&& localIndex, auto&& localView, auto&& intersection) {
+//                                        if (((std::abs(intersection.geometry().center()[0])) < 1e-8)) {
+//                                          dirichletFlags[localView.index(localIndex)[0]] = true;
+//                                        }
+//                                      });
+//
+//  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _2),
+//                                      [&](auto&& localIndex, auto&& localView, auto&& intersection) {
+//                                        if (((std::abs(intersection.geometry().center()[1])) < 1e-8)) {
+//                                          dirichletFlags[localView.index(localIndex)[0]] = true;
+//                                        }
+//                                      });
+
+  // Function for distributed load -> Not implemented for distributed moments
+  auto volumeLoad = [](auto& lamb) {
+    Eigen::Vector<double, 3> fext;
+    fext.setZero();
+    fext[0] = lamb;
+    return fext;
+  };
+
+  /// Create finite elements
+  std::vector<ReissnerMindlinPlateHierarchicRotations<decltype(basis)>> fes;
+  for (auto& ele : elements(gridView)) {
+    fes.emplace_back(basis, ele, Emod, nu, thickness, volumeLoad);
+  }
+
+  std::string output_file = "Simply_Supported_Reissner_Mindlin_Plate_Hierarchic_Rotations";
+#endif
+
   std::cout << "#################################################" << std::endl;
   std::cout << "This gridview contains: " << std::endl;
   std::cout << gridView.size(2) << " vertices" << std::endl;
@@ -224,7 +297,7 @@ int main(int argc, char** argv) {
   std::cout << basis.size() << " Dofs" << std::endl;
 
   /// Create assembler
-  auto denseAssembler = SparseFlatAssembler(basis, fes, dirichletFlags);
+  auto sparseAssembler = SparseFlatAssembler(basis, fes, dirichletFlags);
 
   Eigen::VectorXd w;
   w.setZero(basis.size());
@@ -237,7 +310,7 @@ int main(int argc, char** argv) {
                                      .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
                                      .addAffordance(Ikarus::MatrixAffordances::stiffness)
                                      .build();
-    return denseAssembler.getMatrix(req);
+    return sparseAssembler.getMatrix(req);
   };
 
   auto rFunction = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
@@ -246,15 +319,16 @@ int main(int argc, char** argv) {
                                      .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
                                      .addAffordance(Ikarus::VectorAffordances::forces)
                                      .build();
-    return denseAssembler.getVector(req);
+    return sparseAssembler.getVector(req);
   };
 
   const auto& K = kFunction(w, qz);
   const auto& R = rFunction(w, qz);
 
-//  Eigen::LDLT<Eigen::MatrixXd> solver;
-//  solver.compute(K);
-//  w -= solver.solve(R);
+//  std::cout<<"K"<<std::endl<<K<<std::endl;
+
+// Eigen::EigenSolver<Eigen::MatrixXd> es(K);
+// std::cout << "The eigenvalues of K are:" << std::endl << es.eigenvalues() << std::endl;
 
   auto linSolver = Ikarus::ILinearSolver<double>(Ikarus::SolverTypeTag::sd_SimplicialLDLT);
   linSolver.compute(K);
@@ -303,11 +377,15 @@ int main(int argc, char** argv) {
       = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 3>>(scalarBasis, stressResVector);
 #endif
 
+#if eletype == 2
+  auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(subspaceBasis(basis, _0), w);
+#endif
+
   // Output solution to vtk
   Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(plot_refinement_level), Dune::VTK::conforming);
   vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
-  vtkWriter.addVertexData(stressResGlobalFunc,
-                          Dune::VTK::FieldInfo("stressRes", Dune::VTK::FieldInfo::Type::vector, 3));
+//  vtkWriter.addVertexData(stressResGlobalFunc,
+//                          Dune::VTK::FieldInfo("stressRes", Dune::VTK::FieldInfo::Type::vector, 3));
   vtkWriter.write(output_file);
 
   /// Create analytical solution function for the simply supported case
@@ -348,14 +426,14 @@ int main(int argc, char** argv) {
 //  for (auto& ele : elements(gridView)) {
 //    fesAD.emplace_back(basis, ele, Emod, nu, thickness);
 //  }
-//  auto denseAssemblerAD = DenseFlatAssembler(basis, fesAD, dirichletFlags);
+//  auto sparseAssemblerAD = SparseFlatAssembler(basis, fesAD, dirichletFlags);
 //  auto kFunctionAD = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
 //         Ikarus::FErequirements req = FErequirementsBuilder()
 //                                          .insertGlobalSolution(Ikarus::FESolutions::displacement, disp_)
 //                                          .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
 //                                          .addAffordance(Ikarus::MatrixAffordances::stiffness)
 //                                          .build();
-//         return denseAssemblerAD.getMatrix(req);
+//         return sparseAssemblerAD.getMatrix(req);
 //  };
 //
 //  auto rFunctionAD = [&](auto&& disp_, auto&& lambdaLocal) -> auto& {
@@ -364,7 +442,7 @@ int main(int argc, char** argv) {
 //                                     .insertParameter(Ikarus::FEParameter::loadfactor, lambdaLocal)
 //                                     .addAffordance(Ikarus::VectorAffordances::forces)
 //                                     .build();
-//    return denseAssemblerAD.getVector(req);
+//    return sparseAssemblerAD.getVector(req);
 //  };
 //  const auto& KAD = kFunctionAD(w, qz);
 //  const auto& RAD = rFunctionAD(w, qz);

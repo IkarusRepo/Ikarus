@@ -2,7 +2,7 @@
 [GridParameters]
 refinement = 3
 L = 10
-plot_refinement = 7
+plot_refinement = 4
 
 [ControlParameters]
 
