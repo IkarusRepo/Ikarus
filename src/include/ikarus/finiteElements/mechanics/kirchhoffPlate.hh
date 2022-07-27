@@ -333,18 +333,18 @@ namespace Ikarus {
         localBasis.partial({1, 1}, gp.position(), dN_xieta);
         localBasis.partial({0, 2}, gp.position(), dN_etaeta);
 
-        Eigen::VectorXd dN_xx(localView_.size());
-        Eigen::VectorXd dN_yy(localView_.size());
-        Eigen::VectorXd dN_xy(localView_.size());
+        Eigen::VectorXd dN_xx(fe.size());
+        Eigen::VectorXd dN_yy(fe.size());
+        Eigen::VectorXd dN_xy(fe.size());
         using Dune::power;
-        for (auto i = 0U; i < localView_.size(); ++i) {
+        for (auto i = 0U; i < fe.size(); ++i) {
           dN_xx[i] = dN_xixi[i] * power(Jinv(0, 0), 2) + dN_etaeta[i] * power(Jinv(0, 1), 2);
           dN_yy[i] = dN_xixi[i] * power(Jinv(1, 0), 2) + dN_etaeta[i] * power(Jinv(1, 1), 2);
           dN_xy[i] = 2 * dN_xieta[i] * Jinv(0, 0) * Jinv(1, 1);
         }
         Eigen::MatrixXd bop;
-        bop.setZero(3,localView_.size());
-        for (auto i = 0U; i < localView_.size(); ++i) {
+        bop.setZero(3,fe.size());
+        for (auto i = 0U; i < fe.size(); ++i) {
           bop(0,i) = dN_xx(i);
           bop(1,i) = dN_yy(i);
           bop(2,i) = dN_xy(i);

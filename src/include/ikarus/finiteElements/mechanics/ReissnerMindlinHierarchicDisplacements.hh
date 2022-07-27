@@ -46,7 +46,7 @@
 namespace Ikarus {
 
   template <typename Basis>
-  class ReissnerMindlinPlateHierarchicRotations : public PowerBasisFE<Basis>{
+  class ReissnerMindlinPlateHierarchicDisplacements : public PowerBasisFE<Basis>{
   public:
     using BaseDisp = PowerBasisFE<Basis>;  // Handles globalIndices function
     using GlobalIndex = typename PowerBasisFE<Basis>::GlobalIndex;
@@ -56,7 +56,7 @@ namespace Ikarus {
     using GridView         = typename Basis::GridView;
 
     template <typename VolumeLoad>
-    ReissnerMindlinPlateHierarchicRotations(Basis& basis,
+    ReissnerMindlinPlateHierarchicDisplacements(Basis& basis,
                          const typename LocalView::Element& element,
                          const double p_Emodul,
                          const double p_nu,
@@ -129,10 +129,10 @@ namespace Ikarus {
         N.setZero(3, localView_.size());
         for(size_t nn=0; nn<shapeFunctionValues.size(); ++nn){
           N(0,3*nn) = shapeFunctionValues[nn];
-          N(1,3*nn) = -dNdx[nn];
-          N(1,3*nn+1) = shapeFunctionValues[nn];
-          N(2,3*nn) = -dNdy[nn];
-          N(2,3*nn+2) = shapeFunctionValues[nn];
+          N(1,3*nn) = dNdy[nn];
+          N(1,3*nn+2) = -dNdy[nn];
+          N(2,3*nn) = -dNdx[nn];
+          N(2,3*nn+1) = dNdx[nn];
         }
         g -= N.transpose() * fext * intElement;
       }
@@ -195,17 +195,17 @@ namespace Ikarus {
         bop.setZero(5,localView_.size());
         for (auto i = 0U; i < shapeFunctionValues.size(); ++i) {
           bop(0, 3*i) = -dN_xx(i);
-          bop(0, 3*i+1) = dNdx(i);
+          bop(0, 3*i+1) = dN_xx(i);
 
           bop(1, 3*i) = -dN_yy(i);
-          bop(1, 3*i+2) = dNdy(i);
+          bop(1, 3*i+2) = dN_yy(i);
 
           bop(2, 3*i) = -dN_xy(i);
-          bop(2, 3*i+1) = dNdy(i);
-          bop(2, 3*i+2) = dNdx(i);
+          bop(2, 3*i+1) = dN_xy(i);
+          bop(2, 3*i+2) = dN_xy(i);
 
-          bop(3, 3*i+1) = shapeFunctionValues[i];
-          bop(4, 3*i+2) = shapeFunctionValues[i];
+          bop(3, 3*i+1) = dNdx[i];
+          bop(4, 3*i+2) = dNdy[i];
         }
         h += bop.transpose() * D * bop * intElement;
       }
