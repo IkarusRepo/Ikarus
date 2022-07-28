@@ -48,10 +48,11 @@ namespace AdaptiveIntegrator {
 
       if (is + (i1 - i2) == is or mll <= a or b <= mrr) {
         if ((m <= a or b <= m) and !terminated) {
-          std::cout<<"a: "<<a<<std::endl;
-          std::cout<<"b: "<<b<<std::endl;
-          std::cout<<"m: "<<m<<std::endl;
-          cerr << "No machine number in the interval. Requested tolerance may not be met.\n";
+//          std::cout<<"a: "<<a<<std::endl;
+//          std::cout<<"b: "<<b<<std::endl;
+//          std::cout<<"m: "<<m<<std::endl;
+           throw std::invalid_argument( "No machine number in the interval. Requested tolerance may not be met." );
+//          cerr << "No machine number in the interval. Requested tolerance may not be met.\n";
           terminated = true;
           return std::numeric_limits<double>::infinity();
         }

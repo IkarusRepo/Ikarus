@@ -296,7 +296,7 @@ namespace Ikarus {
       spdlog::info("Total iterations: {} Total CG Iterations: {}", stats.outerIter, stats.innerIterSum);
 
       solverInformation.sucess
-          = (info.stop == StopReason::correctionNormTolReached) or (info.stop == StopReason::gradientNormTolReached);
+          =  (info.stop == StopReason::gradientNormTolReached);
 
       solverInformation.iterations  = stats.outerIter;
       solverInformation.gradienNorm = stats.gradNorm;
@@ -373,12 +373,15 @@ namespace Ikarus {
 
     void solveInnerProblem() {
       truncatedConjugateGradient.setInfo(innerInfo);
-      int attempts = 0;
-      truncatedConjugateGradient.factorize(hessian());
+      if(hessian().norm()>1e-10)
+        truncatedConjugateGradient.factorize(hessian());
+      else
+        eta.setZero();
       // If the preconditioner is IncompleteCholesky the factorization may fail if we have negative diagonal entries and
       // the initial shift is too small. Therefore, if the factorization fails we increase the intial shift by a factor
       // of 5.
       if constexpr (preConditioner == PreConditioner::IncompleteCholesky) {
+        int attempts = 0;
         while (truncatedConjugateGradient.info() != Eigen::Success) {
           choleskyInitialShift *= 5;
           truncatedConjugateGradient.preconditioner().setInitialShift(choleskyInitialShift);
