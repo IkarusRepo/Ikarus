@@ -187,6 +187,33 @@ struct PowerAnsatz
 };
 
 
+struct UsovAnsatz
+{
+  template <typename ScalarType>
+  static auto value(const Eigen::VectorX<ScalarType>& d, double rho, double R) {
+    const ScalarType a = d[0];
+    return rho<a ? 2*a*rho/ (a*a+rho*rho): ScalarType{1};
+  }
+
+  template <typename ScalarType>
+  static auto derivative(const Eigen::VectorX<ScalarType>& d, double rho, double R) {
+    const ScalarType a = d[0];
+    return rho<a ? 2*a/(a*a + rho*rho) - 4*a*rho*rho/pow(a*a + rho*rho,2): ScalarType{0};
+  }
+
+  template <typename ScalarType>
+  static auto secondDerivative(const Eigen::VectorX<ScalarType>& d, double rho, double R) {
+    ScalarType res = 0;
+
+    for (int i = 0; i < d.size(); ++i)
+      res += (i+1)*i*d[i]*Dune::power(rho,i-1);
+
+    return res;
+  }
+
+};
+
+
 
 
 
@@ -250,6 +277,8 @@ int main(int argc, char** argv) {
   console_sink->set_level(spdlog::level::trace);
 //  console_sink->set_pattern("[%^%l%$] %v");
 
+//  using Ansatz = FourierAnsatz;
+  using Ansatz = UsovAnsatz;
   auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>("logs/Micromagnetics.txt", false);
   file_sink->set_level(spdlog::level::trace);
 //  file_sink->set_pattern("[%^%l%$] %v");
@@ -287,8 +316,8 @@ int main(int argc, char** argv) {
       double R, H, magE, exE;
       oldEnergy=1;
       newEnergy = 0;
-      while (Dune::FloatCmp::gt(std::abs(oldEnergy - newEnergy), 1e-6)) {
-        ++terms;
+//      while (Dune::FloatCmp::gt(std::abs(oldEnergy - newEnergy), 1e6)) {
+//        ++terms;
         R = radii[i] * sqrt(2);
         H = heights[j]* sqrt(2);
 
@@ -414,7 +443,7 @@ int main(int argc, char** argv) {
 //              Ikarus::plot::drawFunction(mz, {0, R}, 100);
         //      Ikarus::plot::drawFunction(magEFunc, {0, R}, 100);
         //      Ikarus::plot::drawFunction(exEFunc, {0, R}, 100);
-              Ikarus::plot::drawFunction(RexE, {0, R}, 100);
+//              Ikarus::plot::drawFunction(RexE, {0, R}, 100);
         //    }
         std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
 //        std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()
