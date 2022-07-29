@@ -106,60 +106,6 @@ int main(int argc, char** argv) {
   const int refinement_level = gridParameters.get<int>("refinement");
   const int plot_refinement_level = gridParameters.get<int>("plot_refinement");
 
-#if eletype == 0
-  /// Create 2D nurbs grid
-  const std::array<std::vector<double>, griddim> knotSpans = {{{0, 0, 1, 1}, {0, 0, 1, 1}}};
-
-  using ControlPoint = Dune::IGA::NURBSPatchData<griddim, dimworld>::ControlPointType;
-
-  const std::vector<std::vector<ControlPoint>> controlPoints
-      = {{{.p = {0, 0}, .w = 1}, {.p = {0, L}, .w = 1}}, {{.p = {L, 0}, .w = 1}, {.p = {L, L}, .w = 1}}};
-
-  std::array<int, griddim> dimsize = {2, 2};
-
-  std::vector<double> dofsVec;
-  std::vector<double> l2Evector;
-  auto controlNet = Dune::IGA::NURBSPatchData<griddim, dimworld>::ControlPointNetType(dimsize, controlPoints);
-  using Grid      = Dune::IGA::NURBSGrid<griddim, dimworld>;
-
-  Dune::IGA::NURBSPatchData<griddim, dimworld> patchData;
-  patchData.knotSpans     = knotSpans;
-  patchData.degree        = {1, 1};
-  patchData.controlPoints = controlNet;
-
-  /// Increase polynomial degree in each direction
-  patchData = Dune::IGA::degreeElevate(patchData, 0, 1);
-  patchData = Dune::IGA::degreeElevate(patchData, 1, 1);
-  Grid grid(patchData);
-  grid.globalRefine(refinement_level);
-  auto gridView = grid.leafGridView();
-  using namespace Dune::Functions::BasisFactory;
-
-  /// Create nurbs basis with extracted preBase from grid
-  auto basis = makeBasis(gridView, gridView.getPreBasis());
-
-  /// Fix complete boundary (simply supported plate)
-  std::vector<bool> dirichletFlags(basis.size(), false);
-  Dune::Functions::forEachBoundaryDOF(basis, [&](auto&& index) { dirichletFlags[index] = true; });
-
-  /// Create finite elements
-  std::vector<KirchhoffPlate<decltype(basis)>> fes;
-  for (auto& ele : elements(gridView)) {
-    fes.emplace_back(basis, ele, Emod, nu, thickness);
-  }
-
-  std::string output_file = "Simply_Supported_Kirchhoff_Plate";
-#endif
-
-#if eletype == 1
-//  /// Creating YaspGrid
-//  using Grid        = Dune::YaspGrid<griddim>;
-//  const size_t elex = 1;
-//
-//  Dune::FieldVector<double, 2> bbox = {L, L};
-//  std::array<int, 2> eles           = {elex, elex};
-//  auto grid                         = std::make_shared<Grid>(bbox, eles);
-
   /// Create 2D nurbs grid
   const std::array<std::vector<double>, griddim> knotSpans = {{{0, 0, 1, 1}, {0, 0, 1, 1}}};
 
@@ -185,14 +131,30 @@ int main(int argc, char** argv) {
   patchData = Dune::IGA::degreeElevate(patchData, 1, 1);
   auto grid = std::make_shared<Grid>(patchData);
 
-
   grid->globalRefine(refinement_level);
   auto gridView = grid->leafGridView();
 
   using namespace Dune::Functions::BasisFactory;
 
+#if eletype == 0
   /// Create power basis
-//  auto basis = makeBasis(gridView, power<3>(lagrange<order>(), FlatInterleaved()));
+  auto basis = makeBasis(gridView, gridView.getPreBasis());
+
+  /// Fix complete boundary (simply supported plate)
+  std::vector<bool> dirichletFlags(basis.size(), false);
+  Dune::Functions::forEachBoundaryDOF(basis, [&](auto&& index) { dirichletFlags[index] = true; });
+
+  /// Create finite elements
+  std::vector<KirchhoffPlate<decltype(basis)>> fes;
+  for (auto& ele : elements(gridView)) {
+    fes.emplace_back(basis, ele, Emod, nu, thickness);
+  }
+
+  std::string output_file = "Simply_Supported_Kirchhoff_Plate";
+#endif
+
+#if eletype == 1
+  /// Create power basis
   auto basis = makeBasis(gridView, power<3>(gridView.getPreBasis(), FlatInterleaved()));
 
   /// Fix complete boundary (simply supported plate) - Soft Support
@@ -234,58 +196,13 @@ int main(int argc, char** argv) {
 #endif
 
 #if eletype == 2
-  /// Create 2D nurbs grid
-  const std::array<std::vector<double>, griddim> knotSpans = {{{0, 0, 1, 1}, {0, 0, 1, 1}}};
-
-  using ControlPoint = Dune::IGA::NURBSPatchData<griddim, dimworld>::ControlPointType;
-
-  const std::vector<std::vector<ControlPoint>> controlPoints
-      = {{{.p = {0, 0}, .w = 1}, {.p = {0, L}, .w = 1}}, {{.p = {L, 0}, .w = 1}, {.p = {L, L}, .w = 1}}};
-
-  std::array<int, griddim> dimsize = {2, 2};
-
-  std::vector<double> dofsVec;
-  std::vector<double> l2Evector;
-  auto controlNet = Dune::IGA::NURBSPatchData<griddim, dimworld>::ControlPointNetType(dimsize, controlPoints);
-  using Grid      = Dune::IGA::NURBSGrid<griddim, dimworld>;
-
-  Dune::IGA::NURBSPatchData<griddim, dimworld> patchData;
-  patchData.knotSpans     = knotSpans;
-  patchData.degree        = {1, 1};
-  patchData.controlPoints = controlNet;
-
-  /// Increase polynomial degree in each direction
-  patchData = Dune::IGA::degreeElevate(patchData, 0, 1);
-  patchData = Dune::IGA::degreeElevate(patchData, 1, 1);
-  auto grid = std::make_shared<Grid>(patchData);
-
-
-  grid->globalRefine(refinement_level);
-  auto gridView = grid->leafGridView();
-
-  using namespace Dune::Functions::BasisFactory;
-
-  /// Create power basis
+    /// Create power basis
   auto basis = makeBasis(gridView, power<3>(gridView.getPreBasis(), FlatInterleaved()));
 
   /// Fix complete boundary (simply supported plate) - Soft Support
   std::vector<bool> dirichletFlags(basis.size(), false);
   Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _0),
                                       [&](auto&& index) { dirichletFlags[index] = true; });
-
-//  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _1),
-//                                      [&](auto&& localIndex, auto&& localView, auto&& intersection) {
-//                                        if (((std::abs(intersection.geometry().center()[0])) < 1e-8)) {
-//                                          dirichletFlags[localView.index(localIndex)[0]] = true;
-//                                        }
-//                                      });
-//
-//  Dune::Functions::forEachBoundaryDOF(Dune::Functions::subspaceBasis(basis, _2),
-//                                      [&](auto&& localIndex, auto&& localView, auto&& intersection) {
-//                                        if (((std::abs(intersection.geometry().center()[1])) < 1e-8)) {
-//                                          dirichletFlags[localView.index(localIndex)[0]] = true;
-//                                        }
-//                                      });
 
   // Function for distributed load -> Not implemented for distributed moments
   auto volumeLoad = [](auto& lamb) {
@@ -305,37 +222,6 @@ int main(int argc, char** argv) {
 #endif
 
 #if eletype == 3
-  /// Create 2D nurbs grid
-  const std::array<std::vector<double>, griddim> knotSpans = {{{0, 0, 1, 1}, {0, 0, 1, 1}}};
-
-  using ControlPoint = Dune::IGA::NURBSPatchData<griddim, dimworld>::ControlPointType;
-
-  const std::vector<std::vector<ControlPoint>> controlPoints
-      = {{{.p = {0, 0}, .w = 1}, {.p = {0, L}, .w = 1}}, {{.p = {L, 0}, .w = 1}, {.p = {L, L}, .w = 1}}};
-
-  std::array<int, griddim> dimsize = {2, 2};
-
-  std::vector<double> dofsVec;
-  std::vector<double> l2Evector;
-  auto controlNet = Dune::IGA::NURBSPatchData<griddim, dimworld>::ControlPointNetType(dimsize, controlPoints);
-  using Grid      = Dune::IGA::NURBSGrid<griddim, dimworld>;
-
-  Dune::IGA::NURBSPatchData<griddim, dimworld> patchData;
-  patchData.knotSpans     = knotSpans;
-  patchData.degree        = {1, 1};
-  patchData.controlPoints = controlNet;
-
-  /// Increase polynomial degree in each direction
-  patchData = Dune::IGA::degreeElevate(patchData, 0, 1);
-  patchData = Dune::IGA::degreeElevate(patchData, 1, 1);
-  auto grid = std::make_shared<Grid>(patchData);
-
-
-  grid->globalRefine(refinement_level);
-  auto gridView = grid->leafGridView();
-
-  using namespace Dune::Functions::BasisFactory;
-
   /// Create power basis
   auto basis = makeBasis(gridView, power<3>(gridView.getPreBasis(), FlatInterleaved()));
 
@@ -367,15 +253,8 @@ int main(int argc, char** argv) {
   std::cout << gridView.size(0) << " elements" << std::endl;
   std::cout << basis.size() << " Dofs" << std::endl;
 
-//  int counter=0;
-//  for (size_t i=0; i<basis.size(); ++i){
-//    if (dirichletFlags[i]==true)
-//      counter++;
-//  }
-//  std::cout<<"counter  "<<counter<<std::endl;
-
   /// Create assembler
-  auto sparseAssembler = DenseFlatAssembler(basis, fes, dirichletFlags);
+  auto sparseAssembler = SparseFlatAssembler(basis, fes, dirichletFlags);
 
   Eigen::VectorXd w;
   w.setZero(basis.size());
@@ -403,8 +282,6 @@ int main(int argc, char** argv) {
   const auto& K = kFunction(w, qz);
   const auto& R = rFunction(w, qz);
 
-//  std::cout<<"R"<<std::endl<<R<<std::endl;
-
 // Eigen::EigenSolver<Eigen::MatrixXd> es(K);
 // std::cout << "The eigenvalues of K are:" << std::endl << es.eigenvalues() << std::endl;
 
@@ -412,33 +289,48 @@ int main(int argc, char** argv) {
 //  solverEig.compute(K,basis.size(),"SM",Eigen::ComputeEigenvectors);
 //  std::cout<<"EigenValues are"<<std::endl<<solverEig.eigenvalues()<<std::endl;
 
-//  auto linSolver = Ikarus::ILinearSolver<double>(Ikarus::SolverTypeTag::sd_SimplicialLDLT);
-//  linSolver.compute(K);
-//  linSolver.solve(w, -R);
+  auto linSolver = Ikarus::ILinearSolver<double>(Ikarus::SolverTypeTag::sd_SimplicialLDLT);
+  linSolver.compute(K);
+  linSolver.solve(w, -R);
 
-  Eigen::LDLT<Eigen::MatrixXd> solver;
-  solver.compute(K);
-  w -= solver.solve(R);
-
-//  std::cout<<"R"<<std::endl<<R<<std::endl;
-//
-//  double rsum = 0;
-//  for(size_t i=0; i<basis.size(); ++i)
-//    rsum+=R[i];
-//
-//  std::cout<<"Rsum"<<rsum<<" qz "<<qz<<"qzm"<<qz*L*L<<std::endl;
-//
-//
-//  auto rglobfunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(subspaceBasis(basis, _0), R);
-//  std::cout<<"R size "<<R.size()<<std::endl;
-
-
+//  Eigen::LDLT<Eigen::MatrixXd> solver;
+//  solver.compute(K);
+//  w -= solver.solve(R);
 
 #if eletype == 0
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(basis, w);
+
+  auto resultRequirements = Ikarus::ResultRequirementsBuilder<Eigen::VectorXd>()
+                                .insertGlobalSolution(Ikarus::FESolutions::displacement, w)
+                                .insertParameter(Ikarus::FEParameter::loadfactor, qz)
+                                .addResultRequest(ResultType::stressResultant)
+                                .build();
+
+  ResultTypeMap<double> result;
+  auto scalarBasis     = makeBasis(gridView, lagrangeDG<order>());
+  auto localScalarview = scalarBasis.localView();
+  std::vector<Dune::FieldVector<double, 3>> stressRes(scalarBasis.size());
+  auto ele = elements(gridView).begin();
+
+  for (auto& fe : fes) {
+    localScalarview.bind(*ele);
+    const auto& fe2              = localScalarview.tree().finiteElement();
+    const auto& referenceElement = Dune::ReferenceElements<double, griddim>::general(ele->type());
+    for (auto c = 0UL; c < fe2.size(); ++c) {
+      const auto fineKey                        = fe2.localCoefficients().localKey(c);
+      const auto nodalPositionInChildCoordinate = referenceElement.position(fineKey.subEntity(), fineKey.codim());
+      auto coord                                = toEigenVector(nodalPositionInChildCoordinate);
+      fe.calculateAt(resultRequirements, coord, result);
+      stressRes[localScalarview.index(localScalarview.tree().localIndex(c))[0]] =
+          toFieldVector(result.getResult(ResultType::stressResultant));
+    }
+    ++ele;
+  }
+  auto stressResGlobalFunc
+      = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 3>>(scalarBasis, stressRes);
 #endif
 
-#if eletype == 1
+#if eletype == 1 or eletype == 2 or eletype == 3
   auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(subspaceBasis(basis, _0), w);
 
   auto resultRequirements = Ikarus::ResultRequirementsBuilder<Eigen::VectorXd>()
@@ -476,20 +368,11 @@ int main(int argc, char** argv) {
       = Dune::Functions::makeDiscreteGlobalBasisFunction<Dune::FieldVector<double, 3>>(scalarBasis, stressResVector);
 #endif
 
-#if eletype == 2
-  auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(subspaceBasis(basis, _0), w);
-#endif
-
-#if eletype == 3
-  auto wGlobalFunc = Dune::Functions::makeDiscreteGlobalBasisFunction<double>(subspaceBasis(basis, _0), w);
-#endif
-
   // Output solution to vtk
-  Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(plot_refinement_level), Dune::VTK::conforming);
+  Dune::SubsamplingVTKWriter vtkWriter(gridView, Dune::refinementLevels(plot_refinement_level), Dune::VTK::nonconforming);
   vtkWriter.addVertexData(wGlobalFunc, Dune::VTK::FieldInfo("w", Dune::VTK::FieldInfo::Type::scalar, 1));
-//  vtkWriter.addVertexData(rglobfunc, Dune::VTK::FieldInfo("R", Dune::VTK::FieldInfo::Type::scalar, 1));
-//  vtkWriter.addVertexData(stressResGlobalFunc,
-//                          Dune::VTK::FieldInfo("stressRes", Dune::VTK::FieldInfo::Type::vector, 3));
+  vtkWriter.addVertexData(stressResGlobalFunc,
+                          Dune::VTK::FieldInfo("stressRes", Dune::VTK::FieldInfo::Type::vector, 3));
   vtkWriter.write(output_file);
 
   /// Create analytical solution function for the simply supported case
@@ -555,3 +438,15 @@ int main(int argc, char** argv) {
 //
 //  if(KAD.isApprox(K))
 //    std::cout<<std::endl<<"Coinciding stiffness :)"<<std::endl<<std::endl;
+
+//  ################################################################
+//  ######       Creating Yasp Grid and Lagrangian basis      ######
+//  ################################################################
+//  /// Creating YaspGrid
+//  using Grid        = Dune::YaspGrid<griddim>;
+//  const size_t elex = 1;
+//
+//  Dune::FieldVector<double, 2> bbox = {L, L};
+//  std::array<int, 2> eles           = {elex, elex};
+//  auto grid                         = std::make_shared<Grid>(bbox, eles);
+//  auto basis = makeBasis(gridView, power<3>(lagrange<order>(), FlatInterleaved()));

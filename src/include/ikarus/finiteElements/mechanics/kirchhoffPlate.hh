@@ -174,6 +174,7 @@ namespace Ikarus {
     using BaseDisp = ScalarFieldFE<Basis>;  // Handles globalIndices function
     using GlobalIndex = typename ScalarFieldFE<Basis>::GlobalIndex;
     using FERequirementType = FErequirements<Eigen::VectorXd>;
+    using ResultRequirementsType = ResultRequirements<Eigen::VectorXd>;
     using LocalView         = typename Basis::LocalView;
     using GridView         = typename Basis::GridView;
 
@@ -352,6 +353,69 @@ namespace Ikarus {
         h += bop.transpose() * D * bop * intElement;
       }
     }
+
+    void calculateAt(const ResultRequirementsType& req, const Eigen::Vector<double, Traits::mydim>& local,
+                     ResultTypeMap<double>& result) const {
+      using namespace Dune::Indices;
+      const auto& disp = req.getSolution(Ikarus::FESolutions::displacement);
+      const auto D     = constitutiveMatrix(Emodul, nu, thickness);
+      auto& fe         = localView_.tree().finiteElement();
+      const auto& localBasis = fe.localBasis();
+      const auto geo   = localView_.element().geometry();
+      auto gp          = toFieldVector(local);
+      Eigen::VectorXd local_disp;
+      local_disp.setZero(localView_.size());
+
+      int disp_counter = 0;
+      for (size_t i=0; i < fe.size(); ++i){
+          auto globalIndex = localView_.index(localView_.tree().localIndex(i));
+          local_disp[disp_counter] = disp[globalIndex];
+          disp_counter++;
+        }
+
+      const auto JinvT = geo.jacobianInverseTransposed(gp);
+      const auto Jinv = Ikarus::toEigenMatrix(JinvT).transpose().eval();
+      std::vector<Dune::FieldVector<double, 1>> dN_xixi;
+      std::vector<Dune::FieldVector<double, 1>> dN_xieta;
+      std::vector<Dune::FieldVector<double, 1>> dN_etaeta;
+
+      localBasis.partial({2, 0}, gp, dN_xixi);
+      localBasis.partial({1, 1}, gp, dN_xieta);
+      localBasis.partial({0, 2}, gp, dN_etaeta);
+
+      Eigen::VectorXd dN_xx(fe.size());
+      Eigen::VectorXd dN_yy(fe.size());
+      Eigen::VectorXd dN_xy(fe.size());
+
+      using Dune::power;
+      for (auto i = 0U; i < fe.size(); ++i) {
+        dN_xx[i] = dN_xixi[i] * power(Jinv(0, 0), 2) + dN_etaeta[i] * power(Jinv(0, 1), 2);
+        dN_yy[i] = dN_xixi[i] * power(Jinv(1, 0), 2) + dN_etaeta[i] * power(Jinv(1, 1), 2);
+        dN_xy[i] = 2 * dN_xieta[i] * Jinv(0, 0) * Jinv(1, 1);
+      }
+
+      Eigen::MatrixXd bop;
+      bop.setZero(3,fe.size());
+      for (auto i = 0U; i < fe.size(); ++i) {
+        bop(0,i) = dN_xx(i);
+        bop(1,i) = dN_yy(i);
+        bop(2,i) = dN_xy(i);
+      }
+
+      Eigen::Vector<double, 3> req_res;
+      req_res.setZero();
+      req_res = D * bop * local_disp;
+
+      typename ResultTypeMap<double>::ResultArray resv;
+      if (req.isResultRequested(ResultType::stressResultant)) {
+        resv.setZero(3, 1);
+        resv(0, 0) = req_res(0);
+        resv(1, 0) = req_res(1);
+        resv(2, 0) = req_res(2);
+        result.insertOrAssignResult(ResultType::stressResultant, resv);
+      }
+    }
+
 
     LocalView localView_;
     Ikarus::LocalBasis<std::remove_cvref_t<decltype(std::declval<LocalView>().tree().finiteElement().localBasis())>>
