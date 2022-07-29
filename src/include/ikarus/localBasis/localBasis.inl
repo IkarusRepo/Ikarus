@@ -24,6 +24,31 @@ namespace Ikarus {
         dN(i, j) = dNdune[i][0][j];
   }
 
+
+  template <Concepts::DuneLocalBasis DuneLocalBasis>
+  template <typename Derived>
+  void LocalBasis<DuneLocalBasis>::evaluateSecondDerivatives(const DomainType& local, Eigen::PlainObjectBase<Derived>& ddN) const {
+    std::array<unsigned int, gridDim> order;
+    std::ranges::fill(order, 0);
+    ddN.setZero();
+    ddN.resize(dNdune.size(), Eigen::NoChange);
+    for (int i = 0; i < gridDim; ++i) { //Diagonal terms
+      order[i] = 2;
+      duneLocalBasis->partial(order,local, ddNdune);
+      ddN[i]=ddNdune[i][0];
+      order[i] = 0;
+    }
+
+    std::ranges::fill(order, 1);
+    for (int i = 0; i < gridDim*(gridDim-1)/2; ++i) { //off-diagonal terms
+      order[i] = 0;
+      duneLocalBasis->partial(order,local, ddNdune);
+      ddN[i+gridDim]=ddNdune[i][0];
+      order[i] = 1;
+    }
+
+  }
+
   template <Concepts::DuneLocalBasis DuneLocalBasis>
   template <typename Derived1, typename Derived2>
   void LocalBasis<DuneLocalBasis>::evaluateFunctionAndJacobian(const DomainType& local, Eigen::PlainObjectBase<Derived1>& N,

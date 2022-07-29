@@ -36,6 +36,7 @@ namespace Ikarus {
     LocalBasis() = default;
 
     static constexpr int gridDim = DuneLocalBasis::Traits::dimDomain;
+    static_assert(gridDim<=3, "This local Basis only works for grids with dimensions<=3");
     using DomainType             = typename DuneLocalBasis::Traits::DomainType;
 
     using DomainFieldType = typename DuneLocalBasis::Traits::DomainFieldType;
@@ -51,6 +52,10 @@ namespace Ikarus {
     /* Evaluates the ansatz functions derivatives into the given Eigen Matrix dN */
     template <typename Derived>
     void evaluateJacobian(const DomainType& local, Eigen::PlainObjectBase<Derived>& dN) const;
+
+    /* Evaluates the ansatz functions second derivatives into the given Eigen Matrix ddN */
+    template <typename Derived>
+    void evaluateSecondDerivatives(const DomainType& local, Eigen::PlainObjectBase<Derived>& ddN) const;
 
     /* Evaluates the ansatz functions and derivatives into the given Eigen Vector/Matrix N,dN */
     template <typename Derived1, typename Derived2>
@@ -81,6 +86,12 @@ namespace Ikarus {
     const auto& evaluateJacobian(long unsigned i) const {
       if (not dNbound) throw std::logic_error("You have to bind the basis first");
       return dNbound.value()[i];
+    }
+
+    template <typename Derived>
+    void evaluateSecondDerivatives(long unsigned i) const {
+      if (not ddNbound) throw std::logic_error("You have to bind the basis first");
+      return ddNbound.value()[i];
     }
 
     /* Returns true if the local basis is currently bound to an integration rule */
@@ -130,11 +141,13 @@ namespace Ikarus {
 
   private:
     mutable std::vector<JacobianDuneType> dNdune{};
+    mutable std::vector<JacobianDuneType> ddNdune{};
     mutable std::vector<RangeDuneType> Ndune{};
     DuneLocalBasis const* duneLocalBasis;  // FIXME pass shared_ptr around
     std::optional<std::set<int>> boundDerivatives;
     std::optional<std::vector<Eigen::VectorX<RangeFieldType>>> Nbound{};
     std::optional<std::vector<Eigen::Matrix<RangeFieldType, Eigen::Dynamic, gridDim>>> dNbound{};
+    std::optional<std::vector<Eigen::Matrix<RangeFieldType, Eigen::Dynamic, gridDim== 1? 1: gridDim== 2 ? 3: 6>>> ddNbound{};
     std::optional<Dune::QuadratureRule<DomainFieldType, gridDim>> rule;
   };
 

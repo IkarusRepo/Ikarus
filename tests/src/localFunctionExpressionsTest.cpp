@@ -49,7 +49,7 @@ void testLocalFunction(const LF& lf) {
 
   constexpr int gridDim                = LF::gridDim;
   using Manifold                       = typename std::remove_cvref_t<decltype(coeffs)>::value_type;
-  constexpr int localFunctionValueSize = LF::valueSize;
+  constexpr int localFunctionValueSize = LF::Traits::valueSize;
   constexpr int coeffValueSize         = Manifold::valueSize;
   using ctype                          = typename Manifold::ctype;
   constexpr int coeffCorrectionSize    = Manifold::correctionSize;
@@ -296,7 +296,7 @@ TEST(LocalFunctionTests, TestExpressions) {
     vsingle.setValue(0.25 * Eigen::Vector<double, size>::Random() + 37 * Eigen::Vector<double, size>::UnitX());
 
   for (auto& vsingle : vBlocked4)
-    vsingle.setValue(0.25 * Eigen::Vector<double, size>::Random() + 37 * Eigen::Vector<double, size>::UnitX());
+    vsingle.setValue(0.25 * Eigen::Vector<double, 2>::Random() + 37 * Eigen::Vector<double, 2>::UnitX());
 
   auto localView = basis.localView();
   for (auto& ele : elements(gridView)) {

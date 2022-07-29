@@ -21,7 +21,7 @@ namespace Ikarus {
 
     /** \brief Type used for coordinates */
     using ctype                    = typename Traits::ctype;
-    static constexpr int valueSize = Traits::valueSize;
+    static constexpr int strainSize = Traits::valueSize;
     static constexpr int displacementSize = Base::E1Raw::valueSize;
     static constexpr int gridDim   = Traits::gridDim;
 
@@ -44,7 +44,7 @@ namespace Ikarus {
 
       if constexpr (DerivativeOrder == 1 and LFArgs::hasSingleCoeff)
       {
-        Eigen::Matrix<double, valueSize, gridDim> bopI;
+        Eigen::Matrix<double, strainSize, gridDim> bopI;
         const auto gradArgs = addWrt(lfArgs,wrt(DerivativeDirections::spatialAll));
         const auto gradUdI = evaluateDerivativeImpl(this->m(), gradArgs);
         if constexpr (displacementSize==1)
@@ -71,30 +71,32 @@ namespace Ikarus {
       } else if constexpr (DerivativeOrder == 1 and LFArgs::hasOneSpatialAll)
       {
 #warning This artifically returns a zero
-        return Eigen::Matrix<ctype ,valueSize,gridDim>::Zero();
+        return Eigen::Matrix<ctype ,strainSize,gridDim>::Zero().eval();
       } else if constexpr (DerivativeOrder == 1 and LFArgs::hasOneSpatialSingle)
       {
 #warning This artifically returns a zero
-        return Eigen::Matrix<ctype ,valueSize,1>::Zero();
+        return Eigen::Matrix<ctype ,strainSize,1>::Zero().eval();
       }
       else if constexpr (DerivativeOrder == 2) {
         if constexpr (LFArgs::hasNoSpatial and LFArgs::hasTwoCoeff) {
 
-          return Eigen::Matrix<ctype ,displacementSize,displacementSize>::Zero();
+          return Eigen::Matrix<ctype ,displacementSize,displacementSize>::Zero().eval();
         } else if constexpr (LFArgs::hasOneSpatial and LFArgs::hasSingleCoeff) {
           if constexpr (LFArgs::hasOneSpatialSingle and LFArgs::hasSingleCoeff) {
-            return Eigen::Matrix<ctype ,valueSize,displacementSize>::Zero();
+            return Eigen::Matrix<ctype ,strainSize,displacementSize>::Zero().eval();
           } else if constexpr (LFArgs::hasOneSpatialAll and LFArgs::hasSingleCoeff) {
-            std::array<typename Eigen::Matrix<ctype ,displacementSize,displacementSize>::Zero, gridDim> res;
+            std::array< Eigen::Matrix<ctype ,strainSize,displacementSize>, gridDim> res;
+            for (int i = 0; i < gridDim; ++i)
+              res[i].setZero();
             return res;
           }
         }
       } else if constexpr (DerivativeOrder == 3) {
         if constexpr (LFArgs::hasOneSpatialSingle) {
-          return typename Eigen::Matrix<ctype ,displacementSize,displacementSize>::Zero();
+          return Eigen::Matrix<ctype ,displacementSize,displacementSize>::Zero().eval();
         } else if constexpr (LFArgs::hasOneSpatialAll) {
-          std::array<typename Eigen::Matrix<ctype ,displacementSize,displacementSize>::Zero, gridDim> res;
-          return res;
+
+          return Eigen::Matrix<ctype ,displacementSize,displacementSize>::Zero().eval();
         } else
           static_assert(
               LFArgs::hasOneSpatialSingle or LFArgs::hasOneSpatialAll,

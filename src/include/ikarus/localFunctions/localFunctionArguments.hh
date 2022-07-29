@@ -219,16 +219,18 @@ namespace Ikarus {
                                         DomainTypeOrIntegrationPointIndex>& args,
       const Wrt<WRTArgsOther...>& wrtArgs) {
 
-    auto newWrtArgs =std::apply(Ikarus::wrt<WrtArgs...,WRTArgsOther...>,std::tuple_cat(args.wrtArgs.args,wrtArgs.args ));
+    auto newWrtArgs =std::apply(Ikarus::wrt<std::remove_cvref_t<WrtArgs>...,std::remove_cvref_t<WRTArgsOther>...>,std::tuple_cat(args.wrtArgs.args,wrtArgs.args));
 
 
-    auto newArgs = LocalFunctionEvaluationArgs<Wrt<WrtArgs...,WRTArgsOther...>, Along<AlongArgs...>,
+    auto newArgs = LocalFunctionEvaluationArgs<decltype(newWrtArgs), Along<AlongArgs...>,
                                                TransformWith<TransformArgs...>, DomainTypeOrIntegrationPointIndex>(
         args.integrationPointOrIndex,newWrtArgs, args.alongArgs, args.transformWithArgs, false);
 
     using namespace Dune::Indices;
-    std::get<1>(newArgs.coeffsIndices[_0]._data) = std::get<1>(args.coeffsIndices[_0]._data);
-    std::get<1>(newArgs.coeffsIndices[_1]._data) = std::get<1>(args.coeffsIndices[_1]._data);
+    if constexpr(newArgs.hasSingleCoeff)
+      std::get<1>(newArgs.coeffsIndices[_0]._data) = std::get<1>(args.coeffsIndices[_0]._data);
+    if constexpr(newArgs.hasTwoCoeff)
+      std::get<1>(newArgs.coeffsIndices[_1]._data) = std::get<1>(args.coeffsIndices[_1]._data);
     newArgs.spatialPartialIndices                = args.spatialPartialIndices;
 
     return newArgs;
